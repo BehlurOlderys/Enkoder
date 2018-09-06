@@ -16,7 +16,15 @@ int globalState;
 
 const timestamp_t MAX_UNSIGNED_LONG = 4294967295;
 
+void SetAnalogReadPrescaleTo16(){
+  sbi(ADCSRA,ADPS2) ;
+  cbi(ADCSRA,ADPS1) ;
+  cbi(ADCSRA,ADPS0) ;
+}
+
 void setup() {
+  SetAnalogReadPrescaleTo16();
+  
   pinMode(LED_BUILTIN, OUTPUT);
   pinMode(OUTPUT_PIN_DIR, OUTPUT);
   pinMode(OUTPUT_PIN_STEP, OUTPUT);
