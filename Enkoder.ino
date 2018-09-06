@@ -142,7 +142,7 @@ struct EncoderReader{
   void printReadoutToSerial(const double phi )const{
   //-----------------------------------
     char lineBuffer[128] = {0};
-    snprintf(lineBuffer, sizeof(lineBuffer), "[E] A:%16lu,B:%16lu,C:%10d,D:%10d,F:%10d,T:%16lu,",
+    snprintf(lineBuffer, sizeof(lineBuffer), "[E] A:%16lu,B:%16lu,C:%10d,D:%10d,F:%10d,T:%16lu",
       m_encoder.GetLastChannelA(), 
       m_encoder.GetLastChannelB(), 
       static_cast<int>(m_encoder.GetLastErrorA() * 100.0),

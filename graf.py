@@ -97,13 +97,16 @@ def updater():
     global lastTimestamp
 
     stringData = data.decode("utf-8")
-    if not '[E]' in stringData:
+    enkoderTag = '[E]'
+    if not enkoderTag in stringData:
         return
 
-    print(stringData)
+    stringData = stringData[len(enkoderTag):]
 
+    #print(stringData)
 
-    cspairs = dict(item.split(':') for item in data.decode("utf-8").split(','))
+    cspairs = dict(item.strip().split(':') for item in stringData.split(','))
+    #print(cspairs)
     try:
         channelA = int(cspairs['A'])
         channelB = int(cspairs['B'])
@@ -117,10 +120,12 @@ def updater():
 
     timeDelta = timestamp - lastTimestamp
     lastTimestamp = timestamp
+    if timeDelta == 0:
+        return
     print('TIME DIFF: %s' % str(timeDelta))
 
-    AppendValueToDataAndPrint(channelA, dataA, curveA);
-    AppendValueToDataAndPrint(channelB, dataB, curveB);
+    AppendValueToDataAndPrint(channelA, dataA, curveA)
+    AppendValueToDataAndPrint(channelB, dataB, curveB)
     #AppendValueToDataAndPrint(errorA, dataC, curveC);
     #AppendValueToDataAndPrint(errorB, dataD, curveD);
     #AppendValueToDataAndPrint(360.0+360.0*phi, dataE, curveE);
