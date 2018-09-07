@@ -30,6 +30,8 @@ const double KpBase = interwalIdealnyKolo / 5.0;
 const int DIR_STARWISE = HIGH;
 const int DIR_COUNTER_STARWISE = LOW;
 
+const timestamp_t MAX_UNSIGNED_LONG = 4294967295;
+
 //-----------------------------------------
 // Pins:
 //-----------------------------------------
@@ -44,12 +46,12 @@ const int CHANNEL_B_ANALOG_PIN = 1;
 // States:
 //-----------------------------------------
 
-enum MachineState{
-  STATE_NULL,
-  STATE_ENCODER,
-  STATE_CONSTANT_SPEED,
-  STATE_WARMUP,
-  STATE_OFF
-};
+const int STATE_STOP = 0;
+const int STATE_FORWARD_OPEN_LOOP = 1;
+const int STATE_FORWARD_CLOSED_LOOP = 2;
+const int STATE_BACKWARD = 3;
+
+const int NO_BUTTON_PRESSED = 0;
+const int SOME_BUTTON_PRESSED = 1;
 
 #endif

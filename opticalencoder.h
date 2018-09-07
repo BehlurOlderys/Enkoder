@@ -1,3 +1,6 @@
+#ifndef ENKODER_SIMPLE_OPTICAL_ENCODER
+#define ENKODER_SIMPLE_OPTICAL_ENCODER
+
 #include "typedefs.h"
 
 //-----------------------------------
@@ -24,4 +27,6 @@ private:
   const double m_lambda_OB;
   const double m_lambda_MB;
 };
+
+#endif // ENKODER_SIMPLE_OPTICAL_ENCODER
 

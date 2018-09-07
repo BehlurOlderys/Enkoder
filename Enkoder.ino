@@ -2,27 +2,25 @@
 #include "constants.h"
 #include "steppermotor.h"
 #include "opticalencoder.h"
+#include "timecaller.h"
+#include "statemachine.h"
 
-const int STATE_STOP = 0;
-const int STATE_FORWARD_OPEN_LOOP = 1;
-const int STATE_FORWARD_CLOSED_LOOP = 2;
-const int STATE_BACKWARD = 3;
-
-const int NO_BUTTON_PRESSED = 0;
-const int SOME_BUTTON_PRESSED = 1;
-
-int buttonState;
-int globalState;
-
-const timestamp_t MAX_UNSIGNED_LONG = 4294967295;
-
+//-----------------------------------
 void SetAnalogReadPrescaleTo16(){
+//-----------------------------------
   sbi(ADCSRA,ADPS2) ;
   cbi(ADCSRA,ADPS1) ;
   cbi(ADCSRA,ADPS0) ;
 }
 
+
+int buttonState;
+int globalState;
+
+
+//-----------------------------------
 void setup() {
+//-----------------------------------
   SetAnalogReadPrescaleTo16();
   
   pinMode(LED_BUILTIN, OUTPUT);
@@ -38,6 +36,8 @@ void setup() {
   Serial.begin(115200);
 }
 
+//-----------------------------------
+//-----------------------------------
 struct OnBoardLedLighter{
   OnBoardLedLighter():
     m_isLedOn(false)
@@ -64,79 +64,29 @@ struct OnBoardLedLighter{
   bool m_isLedOn;
 };
 
+
+//-----------------------------------
 void printTime(){
+//-----------------------------------
   char lineBuffer[64] = {0};
   sprintf(lineBuffer, "[G] Time is: %20lu", micros());
   Serial.println(lineBuffer);
 }
 
+//-----------------------------------
 void printGlobalState(){
+//-----------------------------------
   char lineBuffer[30] = {0};
   sprintf(lineBuffer, "[G] Global state = %d", globalState);
   Serial.println(lineBuffer);
 }
 
-
-
-typedef void (*voidFunctionPtr)();
-
-template <typename Callable>
-struct RegularTimedCaller{
-  RegularTimedCaller(Callable callable, const timestamp_t interval):
-    m_timeStart(0ul),
-    m_timeAwaited(0ul),
-    m_callable(callable),
-    m_intervalRegular(interval)
-  {
-    Reset();
-  }
-
-  void Reset(){
-    m_timeStart = micros();
-    m_timeAwaited = m_timeStart + m_intervalRegular;
-  }
-  
-  void CallWhenTime(){
-    const timestamp_t timeNow = micros();
-
-    if (timeNow > m_timeAwaited){
-      m_timeStart = timeNow;
-      SetAwaitedTime();
-      m_callable();
-    }
-  }
-  virtual void SetAwaitedTime()
-  {
-    m_timeAwaited += m_intervalRegular;
-  }
-
-  timestamp_t m_timeStart;
-  timestamp_t m_timeAwaited;
-  Callable m_callable;
-  timestamp_t m_intervalRegular;
-};
-
-template <typename Callable>
-struct AsymmetricTimedCaller : public RegularTimedCaller<Callable>{
-  AsymmetricTimedCaller(Callable callable, const timestamp_t interval1, const timestamp_t interval2):
-    RegularTimedCaller<Callable>(callable, interval1),
-    m_state(false),
-    m_intervalAsymmetric(interval2)
-  {}
-
-  void SetAwaitedTime(){
-    RegularTimedCaller<Callable>::m_timeAwaited += m_state ? RegularTimedCaller<Callable>::m_intervalRegular : m_intervalAsymmetric; 
-    m_state = !m_state;
-  }
-  bool m_state;
-  const timestamp_t m_intervalAsymmetric;
-};
-
-
 StepperMotor ra_StepperMotor;
 OnBoardLedLighter onBoardLedLighter;
 OpticalEncoder raEncoder;
 
+//-----------------------------------
+//-----------------------------------
 struct EncoderReader{
   EncoderReader(OpticalEncoder& encoder) : m_encoder(encoder) {}
   void operator() (){
@@ -164,14 +114,16 @@ struct EncoderReader{
 
 EncoderReader encoderReaderRA(raEncoder);
 
-RegularTimedCaller<EncoderReader>     encoderReaderCaller     (encoderReaderRA, 10000ul);
-RegularTimedCaller<voidFunctionPtr>   serialGlobalStatePrinter(printGlobalState, 1000000ul);
-RegularTimedCaller<OnBoardLedLighter> ledLighterCallerSlow    (onBoardLedLighter, 600000ul);
-RegularTimedCaller<OnBoardLedLighter> ledLighterCallerMedium  (onBoardLedLighter, 300000ul);
-RegularTimedCaller<OnBoardLedLighter> ledLighterCallerFast    (onBoardLedLighter, 100000ul);
+RegularTimedCaller<EncoderReader>     encoderReaderCaller     (encoderReaderRA,     10000ul);
+RegularTimedCaller<voidFunctionPtr>   serialGlobalStatePrinter(printGlobalState,  1000000ul);
+RegularTimedCaller<OnBoardLedLighter> ledLighterCallerSlow    (onBoardLedLighter,  600000ul);
+RegularTimedCaller<OnBoardLedLighter> ledLighterCallerMedium  (onBoardLedLighter,  300000ul);
+RegularTimedCaller<OnBoardLedLighter> ledLighterCallerFast    (onBoardLedLighter,  100000ul);
 RegularTimedCaller<StepperMotor>      raStepperCaller         (ra_StepperMotor, interwalIdealnyKolo);
 
+//-----------------------------------
 bool getButtonPressed(int& b){
+//-----------------------------------
   if (digitalRead(BUTTON_PIN_START) == HIGH){
     b = BUTTON_PIN_START; 
     return true;
@@ -187,8 +139,13 @@ bool getButtonPressed(int& b){
   return false;
 }
 
+//-----------------------------------
+//-----------------------------------
 /////////////////////////// FORWARD OPEN ////////////////
+//-----------------------------------
+//-----------------------------------
 int beginForwardOpen(){
+//-----------------------------------
   ledLighterCallerSlow.Reset();
   raStepperCaller.Reset();
   
@@ -197,12 +154,16 @@ int beginForwardOpen(){
   return STATE_FORWARD_OPEN_LOOP;
 }
 
+//-----------------------------------
 void performStateForwardOpen(){
+//-----------------------------------
   ledLighterCallerSlow.CallWhenTime();
   raStepperCaller.CallWhenTime();
 }
 
+//-----------------------------------
 int nextStateForwardOpen(const int whichButton){
+//-----------------------------------
   switch (whichButton){
     case BUTTON_PIN_START:    return beginStop();
     case BUTTON_PIN_FORWARD:  return beginForwardClosed();
@@ -211,9 +172,13 @@ int nextStateForwardOpen(const int whichButton){
   }
 }
 
+//-----------------------------------
+//-----------------------------------
 ///////////////////////// FORWARD CLOSED //////////////////////
-
+//-----------------------------------
+//-----------------------------------
 int beginForwardClosed(){
+//-----------------------------------
   ledLighterCallerMedium.Reset();
   raStepperCaller.Reset();
   encoderReaderCaller.Reset();
@@ -223,13 +188,17 @@ int beginForwardClosed(){
   return STATE_FORWARD_CLOSED_LOOP;
 }
 
+//-----------------------------------
 void performStateForwardClosed(){
+//-----------------------------------
   ledLighterCallerMedium.CallWhenTime();
   raStepperCaller.CallWhenTime();
   encoderReaderCaller.CallWhenTime();  
 }
 
+//-----------------------------------
 int nextStateForwardClosed(const int whichButton){
+//-----------------------------------
   switch (whichButton){
     case BUTTON_PIN_START:    return beginStop();
     case BUTTON_PIN_FORWARD:  return beginForwardOpen();
@@ -238,9 +207,13 @@ int nextStateForwardClosed(const int whichButton){
   }
 }
 
+//-----------------------------------
+//-----------------------------------
 /////////////////////////// BACKWARDS ////////////////////////////////////
-
+//-----------------------------------
+//-----------------------------------
 int beginBackwards(){
+//-----------------------------------
   ledLighterCallerFast.Reset();
   
   ra_StepperMotor.SetDirection(DIR_COUNTER_STARWISE);
@@ -248,12 +221,16 @@ int beginBackwards(){
   return STATE_BACKWARD;
 }
 
+//-----------------------------------
 void performStateBackward(){
+//-----------------------------------
   ra_StepperMotor.Step();
   ledLighterCallerFast.CallWhenTime();
 }
 
+//-----------------------------------
 int nextStateBackward(const int whichButton){
+//-----------------------------------
   switch (whichButton){
     case BUTTON_PIN_START:    return beginStop();
     case BUTTON_PIN_FORWARD:  return beginForwardOpen();     
@@ -261,16 +238,26 @@ int nextStateBackward(const int whichButton){
   }
 }
 
+//-----------------------------------
+//-----------------------------------
+/////////////////////////// STOP ////////////////////////////////////
+//-----------------------------------
+//-----------------------------------
 int beginStop(){
+//-----------------------------------
   return STATE_STOP;
 }
 
+//-----------------------------------
 void performStateStop(){
+//-----------------------------------
   digitalWrite(LED_BUILTIN, LOW);
   delay(20);
 }
 
+//-----------------------------------
 int nextStateStop(const int whichButton){
+//-----------------------------------
   switch (whichButton){
     case BUTTON_PIN_FORWARD:  return beginForwardOpen();
     case BUTTON_PIN_BACKWARD: return beginBackwards();
@@ -278,17 +265,23 @@ int nextStateStop(const int whichButton){
   }
 }
 
+//-----------------------------------
+//-----------------------------------
+//-----------------------------------
 int performNext(int whichButton){
+//-----------------------------------
    switch (globalState){
     case STATE_STOP:                return nextStateStop(whichButton);     
     case STATE_FORWARD_OPEN_LOOP:   return nextStateForwardOpen(whichButton);  
-    case STATE_FORWARD_CLOSED_LOOP:   return nextStateForwardClosed(whichButton);  
+    case STATE_FORWARD_CLOSED_LOOP: return nextStateForwardClosed(whichButton);  
     case STATE_BACKWARD:            return nextStateBackward(whichButton); 
   }
   return globalState;
 }
 
+//-----------------------------------
 void printStates(const int button){
+//-----------------------------------
   char sBuffer[30];
   sprintf(sBuffer, "[G] Global state = %d", globalState);
   Serial.println(sBuffer);
@@ -298,7 +291,9 @@ void printStates(const int button){
   Serial.println(sBuffer); 
 }
 
+//-----------------------------------
 void performState(){  
+//-----------------------------------
   if (buttonState == NO_BUTTON_PRESSED)
   { 
     int whichButton = 0;
@@ -331,8 +326,11 @@ void performState(){
     }// if !buttonIsPressed
   } // if buttonState
 }
-
-void loop() {
+//-----------------------------------
+//-----------------------------------
+void loop() {  // MAIN LOOP
+//-----------------------------------
+//-----------------------------------
   performState();
   serialGlobalStatePrinter.CallWhenTime();
 }
