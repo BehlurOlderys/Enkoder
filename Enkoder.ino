@@ -142,7 +142,8 @@ struct EncoderReader{
   void operator() (){
 //    printTime();
     const double phi = m_encoder.ReadAngle();
-    printReadoutToSerial(phi);
+    const double phi_arcsek = arcsecsForPulse*((PI + phi)/PI)/2.0;
+    printReadoutToSerial(phi_arcsek);
   }
   private:
   OpticalEncoder& m_encoder;
@@ -150,12 +151,12 @@ struct EncoderReader{
   void printReadoutToSerial(const double phi )const{
   //-----------------------------------
     char lineBuffer[128] = {0};
-    snprintf(lineBuffer, sizeof(lineBuffer), "[E] A:%16lu,B:%16lu,C:%10d,D:%10d,F:%10d,T:%16lu",
+    snprintf(lineBuffer, sizeof(lineBuffer), "[E] A:%16lu,B:%16lu,C:%16ld,D:%16ld,F:%16ld,T:%16lu",
       m_encoder.GetLastChannelA(), 
       m_encoder.GetLastChannelB(), 
-      static_cast<int>(m_encoder.GetLastErrorA() * 100.0),
-      static_cast<int>(m_encoder.GetLastErrorB() * 100.0),
-      static_cast<int>(phi * 100.0),
+      static_cast<long>(m_encoder.GetCalcA() * 100.0),
+      static_cast<long>(m_encoder.GetCalcB() * 100.0),
+      static_cast<long>(phi * 100.0),
       micros());
     Serial.println(lineBuffer);
   }
@@ -163,7 +164,7 @@ struct EncoderReader{
 
 EncoderReader encoderReaderRA(raEncoder);
 
-RegularTimedCaller<EncoderReader>     encoderReaderCaller     (encoderReaderRA, 20000ul);
+RegularTimedCaller<EncoderReader>     encoderReaderCaller     (encoderReaderRA, 10000ul);
 RegularTimedCaller<voidFunctionPtr>   serialGlobalStatePrinter(printGlobalState, 1000000ul);
 RegularTimedCaller<OnBoardLedLighter> ledLighterCallerSlow    (onBoardLedLighter, 600000ul);
 RegularTimedCaller<OnBoardLedLighter> ledLighterCallerMedium  (onBoardLedLighter, 300000ul);

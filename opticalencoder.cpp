@@ -20,8 +20,8 @@ OpticalEncoder::OpticalEncoder() :
 //-----------------------------------
   m_channelA(0),
   m_channelB(0),
-  m_magA(3630.0 - 1890.0), m_offA(2*1890.0 + m_magA), m_errorA(0.),
-  m_magB(3640.0 - 1980.0), m_offB(2*1980.0 + m_magB), m_errorB(0.),
+  m_magA(3630.0 - 1890.0), m_offA(2*1890.0 + m_magA), m_errorA(0.), m_calcA(0.),
+  m_magB(3640.0 - 1980.0), m_offB(2*1980.0 + m_magB), m_errorB(0.), m_calcB(0.),
   m_lambda_OA(0.1), 
   m_lambda_MA(0.1),
   m_lambda_OB(0.1),
@@ -41,10 +41,10 @@ double OpticalEncoder::ReadAngle(){
 
   double sinphi = sin(phi);
   double cosphi = cos(phi);
-  double calcA = m_offA + m_magA * sinphi;
-  double calcB = m_offB + m_magB * cosphi;
-  m_errorA = m_channelA - calcA;  
-  m_errorB = m_channelB - calcB;
+  m_calcA = m_offA + m_magA * sinphi;
+  m_calcB = m_offB + m_magB * cosphi;
+  m_errorA = m_channelA - m_calcA;  
+  m_errorB = m_channelB - m_calcB;
   
   m_offA += m_lambda_OA * m_errorA;
   m_offB += m_lambda_OB * m_errorB;

@@ -2,8 +2,9 @@ from pyqtgraph.Qt import QtGui, QtCore
 import pyqtgraph as pg
 import serial
 from math import sin, cos, atan2, pi;
+from math import pi
 data = ""
-MAXPOINTS = 2000;
+MAXPOINTS = 1000;
 plik = open("log.txt", "w");
 counter = 0;
 mtime = 0;
@@ -103,16 +104,16 @@ def updater():
 
     stringData = stringData[len(enkoderTag):]
 
-    #print(stringData)
+    print(stringData)
 
     cspairs = dict(item.strip().split(':') for item in stringData.split(','))
     #print(cspairs)
     try:
         channelA = int(cspairs['A'])
         channelB = int(cspairs['B'])
-        errorA = int(cspairs['C']) / 100
-        errorB = int(cspairs['D']) / 100
-        phi_100 = int(cspairs['F']) / 100
+        calcA = int(cspairs['C']) / 100
+        calcB = int(cspairs['D']) / 100
+        phi = float(cspairs['F']) / 100.0
         timestamp = int(cspairs['T'])
     except KeyError as ke:
         print('Key error: %s' % str(ke))
@@ -124,8 +125,11 @@ def updater():
         return
     print('TIME DIFF: %s' % str(timeDelta))
 
-    AppendValueToDataAndPrint(channelA, dataA, curveA)
-    AppendValueToDataAndPrint(channelB, dataB, curveB)
+    AppendValueToDataAndPrint(phi, dataA, curveA)
+    #AppendValueToDataAndPrint(channelB, dataB, curveB)
+    #AppendValueToDataAndPrint(channelA, dataA, curveA)
+    #AppendValueToDataAndPrint(calcA, dataB, curveB)
+    #AppendValueToDataAndPrint(channelA, dataA, curveA)
     #AppendValueToDataAndPrint(errorA, dataC, curveC);
     #AppendValueToDataAndPrint(errorB, dataD, curveD);
     #AppendValueToDataAndPrint(360.0+360.0*phi, dataE, curveE);
