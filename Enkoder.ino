@@ -100,13 +100,15 @@ struct EncoderReader{
   //-----------------------------------
   void printReadoutToSerial(const double phi )const{
   //-----------------------------------
-    char lineBuffer[128] = {0};
-    snprintf(lineBuffer, sizeof(lineBuffer), "[E] A:%16lu,B:%16lu,C:%16ld,D:%16ld,F:%16ld,T:%16lu",
-      m_encoder.GetLastChannelA(), 
-      m_encoder.GetLastChannelB(), 
-      static_cast<long>(m_encoder.GetCalcA() * 100.0),
-      static_cast<long>(m_encoder.GetCalcB() * 100.0),
-      static_cast<long>(phi * 100.0),
+    char lineBuffer[160] = {0};
+    snprintf(lineBuffer, sizeof(lineBuffer), "[E] A:%12lu,B:%12lu,C:%12ld,D:%12ld,E:%12ld,F:%12ld,T:%16lu",
+      m_encoder.GetLastChannelA(), // A
+      m_encoder.GetLastChannelB(), // B
+      static_cast<long>(m_encoder.GetLastErrorA() * 100.0), // C
+      static_cast<long>(m_encoder.GetLastErrorB() * 100.0), // D
+      static_cast<long>(m_encoder.GetMagA() * 100.0), // E
+      static_cast<long>(m_encoder.GetOffsetA() * 100.0),  // F
+      //static_cast<long>(phi * 100.0),
       micros());
     Serial.println(lineBuffer);
   }

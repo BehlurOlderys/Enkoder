@@ -113,7 +113,10 @@ def updater():
         channelB = int(cspairs['B'])
         calcA = int(cspairs['C']) / 100
         calcB = int(cspairs['D']) / 100
-        phi = float(cspairs['F']) / 100.0
+        magA = int(cspairs['E']) / 100
+        offA = int(cspairs['F']) / 100
+        #errorA = float(cspairs['E']) / 100.0
+        #phi = float(cspairs['F']) / 100.0
         timestamp = int(cspairs['T'])
     except KeyError as ke:
         print('Key error: %s' % str(ke))
@@ -125,14 +128,17 @@ def updater():
         return
     print('TIME DIFF: %s' % str(timeDelta))
 
-    AppendValueToDataAndPrint(phi, dataA, curveA)
-    #AppendValueToDataAndPrint(channelB, dataB, curveB)
     #AppendValueToDataAndPrint(channelA, dataA, curveA)
-    #AppendValueToDataAndPrint(calcA, dataB, curveB)
+    #AppendValueToDataAndPrint(channelB, dataB, curveB)
+    #AppendValueToDataAndPrint(calcA, dataC, curveC)
+    #AppendValueToDataAndPrint(calcB, dataD, curveD)
+    #AppendValueToDataAndPrint(magA, dataC, curveC)
+    AppendValueToDataAndPrint(offA, dataD, curveD)
+    #AppendValueToDataAndPrint(errorA, dataC, curveC);
     #AppendValueToDataAndPrint(channelA, dataA, curveA)
     #AppendValueToDataAndPrint(errorA, dataC, curveC);
     #AppendValueToDataAndPrint(errorB, dataD, curveD);
-    #AppendValueToDataAndPrint(360.0+360.0*phi, dataE, curveE);
+    #AppendValueToDataAndPrint(phi, dataE, curveE);
 """
  if (counter > 1000):
         counter = 0
