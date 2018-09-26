@@ -128,12 +128,12 @@ def updater():
         return
     print('TIME DIFF: %s' % str(timeDelta))
 
-    #AppendValueToDataAndPrint(channelA, dataA, curveA)
-    #AppendValueToDataAndPrint(channelB, dataB, curveB)
+    AppendValueToDataAndPrint(channelA, dataA, curveA)
+    AppendValueToDataAndPrint(channelB, dataB, curveB)
     #AppendValueToDataAndPrint(calcA, dataC, curveC)
     #AppendValueToDataAndPrint(calcB, dataD, curveD)
     #AppendValueToDataAndPrint(magA, dataC, curveC)
-    AppendValueToDataAndPrint(offA, dataD, curveD)
+    #AppendValueToDataAndPrint(offA, dataD, curveD)
     #AppendValueToDataAndPrint(errorA, dataC, curveC);
     #AppendValueToDataAndPrint(channelA, dataA, curveA)
     #AppendValueToDataAndPrint(errorA, dataC, curveC);

@@ -93,7 +93,7 @@ struct EncoderReader{
 //    printTime();
     const double phi = m_encoder.ReadAngle();
     const double phi_arcsek = arcsecsForPulse*((PI + phi)/PI)/2.0;
-    printReadoutToSerial(phi_arcsek);
+//    printReadoutToSerial(phi_arcsek);
   }
   private:
   OpticalEncoder& m_encoder;
