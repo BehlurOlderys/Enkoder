@@ -3,11 +3,13 @@ import pyqtgraph as pg
 import serial
 from math import sin, cos, atan2, pi;
 from math import pi
+
 data = ""
 MAXPOINTS = 1000;
 plik = open("log.txt", "w");
 counter = 0;
 mtime = 0;
+
 
 class YourThreadName(QtCore.QThread):
     def __init__(self):
@@ -28,24 +30,24 @@ class YourThreadName(QtCore.QThread):
             else:
                 print("timeout")
 
-app = QtGui.QApplication([])
 
+app = QtGui.QApplication([])
 
 myPlot = pg.plot()
 curveA = myPlot.plot(pen=pg.mkPen('r'))
-dataA = [0,0,0,0,0,0,0,0,0,0]
+dataA = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
 
 curveB = myPlot.plot(pen=pg.mkPen('g'))
-dataB = [0,0,0,0,0,0,0,0,0,0]
+dataB = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
 
 curveC = myPlot.plot(pen=pg.mkPen('b'))
-dataC = [0,0,0,0,0,0,0,0,0,0]
+dataC = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
 
 curveD = myPlot.plot(pen=pg.mkPen('y'))
-dataD = [0,0,0,0,0,0,0,0,0,0]
+dataD = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
 
 curveE = myPlot.plot(pen=pg.mkPen('w'))
-dataE = [0,0,0,0,0,0,0,0,0,0]
+dataE = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
 
 myThread = YourThreadName()
 myThread.start()
@@ -62,6 +64,7 @@ lambdaOB = 0.1;
 lambdaUA = 0.1;
 lambdaUB = 0.1;
 
+
 def GetAngle(channelA, channelB):
     global offsetA, offsetB, amplitudeA, amplitudeB, calcA, calcB;
     bareA = (channelA - offsetA) / amplitudeA;
@@ -71,14 +74,15 @@ def GetAngle(channelA, channelB):
     cosphi = cos(phi);
     calcA = offsetA + amplitudeA * sinphi;
     calcB = offsetB + amplitudeB * cosphi;
-    errorA = channelA - calcA;  
+    errorA = channelA - calcA;
     errorB = channelB - calcB;
     offsetA += lambdaOA * errorA;
     offsetB += lambdaOB * errorB;
     amplitudeA += lambdaUA * errorA * sinphi;
     amplitudeB += lambdaUB * errorB * cosphi;
     return phi;
-    
+
+
 def AppendValueToDataAndPrint(value, data, curve):
     if len(data) > MAXPOINTS:
         data.pop(0)
@@ -107,16 +111,16 @@ def updater():
     print(stringData)
 
     cspairs = dict(item.strip().split(':') for item in stringData.split(','))
-    #print(cspairs)
+    # print(cspairs)
     try:
-        channelA = int(cspairs['A'])
-        channelB = int(cspairs['B'])
-        calcA = int(cspairs['C']) / 100
-        calcB = int(cspairs['D']) / 100
-        magA = int(cspairs['E']) / 100
-        offA = int(cspairs['F']) / 100
-        #errorA = float(cspairs['E']) / 100.0
-        #phi = float(cspairs['F']) / 100.0
+        #channelA = int(cspairs['A'])
+        #channelB = int(cspairs['B'])
+        error = int(cspairs['C']) / 100
+        should = int(cspairs['D']) / 100
+        phi = int(cspairs['E']) / 100
+        #offA = int(cspairs['F']) / 100
+        # errorA = float(cspairs['E']) / 100.0
+        # phi = float(cspairs['F']) / 100.0
         timestamp = int(cspairs['T'])
     except KeyError as ke:
         print('Key error: %s' % str(ke))
@@ -128,32 +132,32 @@ def updater():
         return
     print('TIME DIFF: %s' % str(timeDelta))
 
-    AppendValueToDataAndPrint(channelA, dataA, curveA)
-    AppendValueToDataAndPrint(channelB, dataB, curveB)
-    #AppendValueToDataAndPrint(calcA, dataC, curveC)
-    #AppendValueToDataAndPrint(calcB, dataD, curveD)
-    #AppendValueToDataAndPrint(magA, dataC, curveC)
-    #AppendValueToDataAndPrint(offA, dataD, curveD)
-    #AppendValueToDataAndPrint(errorA, dataC, curveC);
-    #AppendValueToDataAndPrint(channelA, dataA, curveA)
-    #AppendValueToDataAndPrint(errorA, dataC, curveC);
-    #AppendValueToDataAndPrint(errorB, dataD, curveD);
-    #AppendValueToDataAndPrint(phi, dataE, curveE);
+    # AppendValueToDataAndPrint(phi, dataA, curveA)
+    # AppendValueToDataAndPrint(should, dataB, curveB)
+    AppendValueToDataAndPrint(error, dataC, curveC)
+    # AppendValueToDataAndPrint(calcB, dataD, curveD)
+    # AppendValueToDataAndPrint(magA, dataC, curveC)
+    # AppendValueToDataAndPrint(offA, dataD, curveD)
+    # AppendValueToDataAndPrint(errorA, dataC, curveC);
+    # AppendValueToDataAndPrint(channelA, dataA, curveA)
+    # AppendValueToDataAndPrint(errorA, dataC, curveC);
+    # AppendValueToDataAndPrint(errorB, dataD, curveD);
+    # AppendValueToDataAndPrint(phi, dataE, curveE);
+
+
 """
  if (counter > 1000):
         counter = 0
         print ('mtime = ' + str(mtime) + ', delta = ' + str((timeT - mtime)/1000) + 's, sps = '+str(1000000.0/(timeT - mtime))) # + SPS = ' + str(1000000/(mtime - timeT)))
         mtime = timeT
-        
+
     counter +=1;
-    
+
     #print ('T = ' + str(timeT) + ', A = ' + str(channelA) + ', B = ' + str(channelB))
     phi = GetAngle(channelA, channelB)/pi;
-    
+
     #plik.write(str(channelA) + ":" + str(channelB) + ":" + str(supplyVdd) + "\n")
 """
-
-
 
 timer = QtCore.QTimer()
 timer.timeout.connect(updater)
@@ -161,5 +165,6 @@ timer.start(0)
 
 if __name__ == '__main__':
     import sys
+
     if (sys.flags.interactive != 1) or not hasattr(QtCore, 'PYQT_VERSION'):
         QtGui.QApplication.instance().exec_()

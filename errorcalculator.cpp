@@ -4,14 +4,15 @@
 #include "limits.h"
 
 namespace{
-const int     angleThreshold = 10;
+const int     angleThreshold = 100;
 }
 
 //-----------------------------------
 ErrorCalculator::ErrorCalculator():
   m_lastTime(0),
   m_lastPhi(0.0),
-  m_shouldPhi(0.0)
+  m_shouldPhi(0.0),
+  m_beginPhi(0.0)
 //-----------------------------------
 {}
 
@@ -23,6 +24,7 @@ timestamp_t ErrorCalculator::GetDeltaTime(){
   if (delta > currentTime){
     delta = currentTime + (ULONG_MAX - m_lastTime);
   }
+  
   return delta;
 }
 
@@ -30,7 +32,7 @@ timestamp_t ErrorCalculator::GetDeltaTime(){
 double ErrorCalculator::GetShouldPhiArcSec(){
 //------------------------------------------------
   const timestamp_t deltaTime = GetDeltaTime();
-  double shouldPhi = ((double(deltaTime) * AngularVelocityArcSecPerUs)) + m_lastPhi;
+  double shouldPhi = ((double(deltaTime) * AngularVelocityArcSecPerUs)) + m_beginPhi;
   
   while (shouldPhi > 2*arcsecsForPulse){
     shouldPhi -= arcsecsForPulse;
@@ -45,10 +47,14 @@ double ErrorCalculator::CalculateError(const double phiArcSec){
 
   if (m_lastPhi > (arcsecsForPulse - angleThreshold) && phiArcSec < angleThreshold){ // over bar
     m_shouldPhi -= arcsecsForPulse;
+    m_beginPhi -= arcsecsForPulse;
   }
-  else if (m_lastPhi < angleThreshold && phiArcSec > (arcsecsForPulse - angleThreshold)){ // under bar
-    m_shouldPhi += arcsecsForPulse;
-  }
+//  else if (m_lastPhi < angleThreshold &&
+//           phiArcSec > (arcsecsForPulse - angleThreshold) &&
+//           m_shouldPhi < angleThreshold){ // under bar
+//    m_shouldPhi += arcsecsForPulse;
+//  }
+  m_lastPhi = phiArcSec;
   return m_shouldPhi - phiArcSec; 
 }
 

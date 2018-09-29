@@ -9,8 +9,10 @@ struct ErrorCalculator{
 //-----------------------------------
               ErrorCalculator          ();
   double      CalculateError           (const double phiArcSec);
-  void        UpdateLastMeasures       (const double phiArcSec){ m_lastTime = micros();
-                                        m_lastPhi = phiArcSec; }
+  void        Reset                    (const double phiArcSec){ m_lastTime = micros();
+                                        m_lastPhi = phiArcSec;
+                                        m_beginPhi = phiArcSec;
+                                        }
   double      GetLastShouldPhi         () const { return m_shouldPhi; }
 private:
   timestamp_t GetDeltaTime             ();
@@ -19,6 +21,7 @@ private:
   timestamp_t m_lastTime;
   double      m_lastPhi;
   double      m_shouldPhi;
+  double      m_beginPhi;
 };
 
 #endif

@@ -4,6 +4,7 @@
 #include "opticalencoder.h"
 #include "timecaller.h"
 #include "statemachine.h"
+#include "errorcalculator.h"
 
 //-----------------------------------
 void SetAnalogReadPrescaleTo16(){
@@ -88,25 +89,46 @@ OpticalEncoder raEncoder;
 //-----------------------------------
 //-----------------------------------
 struct EncoderReader{
-  EncoderReader(OpticalEncoder& encoder) : m_encoder(encoder) {}
-  void operator() (){
-//    printTime();
+  EncoderReader(OpticalEncoder& encoder, ErrorCalculator& errorCalc, StepperMotor& stepper) :
+    m_encoder(encoder),
+    m_errorCalc(errorCalc),
+    m_stepper(stepper)
+  {}
+  double SimpleGetPhiArcSek(){
     const double phi = m_encoder.ReadAngle();
     const double phi_arcsek = arcsecsForPulse*((PI + phi)/PI)/2.0;
-//    printReadoutToSerial(phi_arcsek);
+    return phi_arcsek;
+  }
+  void Read(){
+    const double phi_arcsek = SimpleGetPhiArcSek();
+    const double error = m_errorCalc.CalculateError(phi_arcsek);
+    const double shouldPhi = m_errorCalc.GetLastShouldPhi();
+    m_stepper.ReactToError(error);
+  }
+  void ReadAndPrint(){
+    const double phi_arcsek = SimpleGetPhiArcSek();
+    const double error = m_errorCalc.CalculateError(phi_arcsek);
+    const double shouldPhi = m_errorCalc.GetLastShouldPhi();
+    m_stepper.ReactToError(error);
+    printReadoutToSerial(phi_arcsek, error, shouldPhi);
+  }
+  void operator() (){
+    ReadAndPrint();
   }
   private:
-  OpticalEncoder& m_encoder;
+  OpticalEncoder&  m_encoder;
+  ErrorCalculator& m_errorCalc;
+  StepperMotor&    m_stepper;
   //-----------------------------------
-  void printReadoutToSerial(const double phi )const{
+  void printReadoutToSerial(const double phi, const double error, const double should)const{
   //-----------------------------------
     char lineBuffer[160] = {0};
     snprintf(lineBuffer, sizeof(lineBuffer), "[E] A:%12lu,B:%12lu,C:%12ld,D:%12ld,E:%12ld,F:%12ld,T:%16lu",
       m_encoder.GetLastChannelA(), // A
       m_encoder.GetLastChannelB(), // B
-      static_cast<long>(m_encoder.GetLastErrorA() * 100.0), // C
-      static_cast<long>(m_encoder.GetLastErrorB() * 100.0), // D
-      static_cast<long>(m_encoder.GetMagA() * 100.0), // E
+      static_cast<long>(error * 100.0), // C
+      static_cast<long>(should * 100.0), // D
+      static_cast<long>(phi * 100.0), // E
       static_cast<long>(m_encoder.GetOffsetA() * 100.0),  // F
       //static_cast<long>(phi * 100.0),
       micros());
@@ -114,9 +136,10 @@ struct EncoderReader{
   }
 };
 
-EncoderReader encoderReaderRA(raEncoder);
+ErrorCalculator raErrorCalculator;
+EncoderReader encoderReaderRA(raEncoder, raErrorCalculator, ra_StepperMotor);
 
-RegularTimedCaller<EncoderReader>     encoderReaderCaller     (encoderReaderRA,     10000ul);
+//RegularTimedCaller<EncoderReader>     encoderReaderCaller     (encoderReaderRA,     10000ul);
 RegularTimedCaller<voidFunctionPtr>   serialGlobalStatePrinter(printGlobalState,  1000000ul);
 RegularTimedCaller<OnBoardLedLighter> ledLighterCallerSlow    (onBoardLedLighter,  600000ul);
 RegularTimedCaller<OnBoardLedLighter> ledLighterCallerMedium  (onBoardLedLighter,  300000ul);
@@ -150,6 +173,7 @@ int beginForwardOpen(){
 //-----------------------------------
   ledLighterCallerSlow.Reset();
   raStepperCaller.Reset();
+//  encoderReaderCaller.Reset();
   
   ra_StepperMotor.SetDirection(DIR_STARWISE);
 
@@ -161,6 +185,7 @@ void performStateForwardOpen(){
 //-----------------------------------
   ledLighterCallerSlow.CallWhenTime();
   raStepperCaller.CallWhenTime();
+//  encoderReaderCaller.CallWhenTime();  
 }
 
 //-----------------------------------
@@ -183,7 +208,11 @@ int beginForwardClosed(){
 //-----------------------------------
   ledLighterCallerMedium.Reset();
   raStepperCaller.Reset();
-  encoderReaderCaller.Reset();
+//  encoderReaderCaller.Reset();
+  
+  const double currentPhi = encoderReaderRA.SimpleGetPhiArcSek();
+  
+  raErrorCalculator.Reset(currentPhi);
   
   ra_StepperMotor.SetDirection(DIR_STARWISE);
 
@@ -194,8 +223,8 @@ int beginForwardClosed(){
 void performStateForwardClosed(){
 //-----------------------------------
   ledLighterCallerMedium.CallWhenTime();
-  raStepperCaller.CallWhenTime();
-  encoderReaderCaller.CallWhenTime();  
+
+  encoderReaderRA.ReadAndPrint();
 }
 
 //-----------------------------------
