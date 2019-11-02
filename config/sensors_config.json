@@ -1,0 +1,8 @@
+{
+  "TSL1401": {
+    "N": 128,
+	"pixel_width_um": 55.5,
+    "pixel_height_um": 63.5,
+    "horizontal_spacing_um": 8
+  }
+}
