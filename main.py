@@ -1,19 +1,14 @@
 from hardware.linear_ccd_sensor import LinearCCDSensor
+from config.config_utils import get_default_sensors_config
 from processing.line_fitter import LineFitter
 from visualisation.plotter import Plotter
 import json
 import argparse
 import logging
-import os
 import numpy as np
 
 # necessary to disable np debug nonsense:
 logging.getLogger("matplotlib").propagate = False
-
-sensor_type = "TSL1401"
-my_dir = os.path.split(__file__)[0].replace("/", "\\")
-default_config_dir = os.path.join(my_dir, "config")
-default_file_for_sensor_config = os.path.join(default_config_dir, 'sensors_config.json')
 
 logger = logging.getLogger(__name__)
 
@@ -31,7 +26,7 @@ if __name__ == "__main__":
         sensor_config_json = json.load(f)
 
     logger.debug(f"Creating instance of sensor...")
-    sensor = LinearCCDSensor.from_json(sensor_config_json[sensor_type])
+    sensor = get_simple_sensor()
     logger.info(sensor)
     logger.debug(f"Creating line fitter...")
     fitter = LineFitter(sensor)

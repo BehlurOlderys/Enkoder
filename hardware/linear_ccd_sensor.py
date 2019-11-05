@@ -3,11 +3,22 @@ import os
 
 
 class LinearCCDSensor:
+    """            w
+    h [][][][][][][][][][][][][]
+    """
     def __init__(self, n, pixel_w_um, pixel_h_um, horizontal_spacing_um):
         self.N = n
         self.pixel_w_um = pixel_w_um
         self.pixel_h_um = pixel_h_um
         self.horizontal_spacing_um = horizontal_spacing_um
+
+    @property
+    def height(self):
+        return self.pixel_h_um
+
+    @property
+    def width(self):
+        return self.N*(self.pixel_w_um + self.horizontal_spacing_um)
 
     def get_data(self, i=0):
         my_dir = os.path.split(__file__)[0].replace("/", "\\")
