@@ -1,7 +1,6 @@
 from config.config_utils import get_default_sensors_config
 from hardware.linear_ccd_sensor import LinearCCDSensor
 from hardware.encoder_wheel import EncoderWheel
-from shapely.geometry import Polygon
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 from shapely import affinity
@@ -19,10 +18,8 @@ class Plotter:
     def __init__(self):
         self.prepared_patches = []
 
-    def add_polygon(self, p, color='black', units='mm'):
+    def add_polygon(self, p, color='black'):
         points = get_polygons_points(p)
-        if units == 'um':
-            points = np.divide(points, 1000)
         logger.debug(f"Plotter received something with shape {np.shape(points)}")
         xy = np.transpose(points)
         logger.debug(f"Coords= \n{xy}\nShape = {np.shape(xy)}")
@@ -35,12 +32,12 @@ class Plotter:
         for p in self.prepared_patches:
             ax.add_patch(p)
 
-        ax.set_xlim(-1, 1)
-        ax.set_ylim(70, 80)
+        ax.set_xlim(-1000, 1000)
+        ax.set_ylim(70000, 86000)
 
-        ax.set(xlabel='position (px)',
-               ylabel='intensity (a.u.)',
-               title='About as simple as it gets, folks')
+        ax.set(xlabel='x [um]',
+               ylabel='y [um]',
+               title='View of encoder')
         ax.grid()
 
         plt.show()
@@ -54,33 +51,17 @@ class ReadoutGenerator:
     def __init__(self, sensor, wheel, sensor_tilt_deg=0, sensor_shift_um=(0, 0)):
         self.sensor = sensor
         self.wheel = wheel
-        self.sensor_rectangle = self._create_sensor_rectangle(sensor_tilt_deg, sensor_shift_um)
+        self.tilt_deg = sensor_tilt_deg
+        self.shift_um = sensor_shift_um
 
-    def _create_sensor_rectangle(self, sensor_tilt_deg, sensor_shift_um):
-        """
-        starting tilt is 90deg so we assume sensor is standing on shorter side (on height)
-        Width is longer!
-        :param sensor_tilt_deg:
-        :param sensor_shift_um:
-        :return:
-        """
-        sensor_rectangle = Polygon([
-            (-self.sensor.height/2, 0),
-            (self.sensor.height/2, 0),
-            (self.sensor.height/2, 0 + self.sensor.width),
-            (-self.sensor.height/2, 0 + self.sensor.width)
-        ])
-        logger.debug(f"Sensor rectangle before tilt= {sensor_rectangle}")
-
-        sensor_rectangle = affinity.rotate(sensor_rectangle,
-                                           sensor_tilt_deg,
-                                           origin=(0, 0),
-                                           use_radians=False)
-
-        logger.debug(f"Sensor rectangle before shift= {sensor_rectangle}")
-        (x, y) = sensor_shift_um
-        R_um = self.wheel.radius_mm*1000
-        return affinity.translate(sensor_rectangle, x, y + R_um)
+    def _shift_object_like_sensor(self, p):
+        (x, y) = self.shift_um
+        r_um = self.wheel.radius_mm * 1000
+        p = affinity.rotate(p,
+                            90+self.tilt_deg,
+                            origin=(0, 0),
+                            use_radians=False)
+        return affinity.translate(p, x, y + r_um)
 
     def for_angle(self, angle):
         """
@@ -88,21 +69,45 @@ class ReadoutGenerator:
         :param angle:
         :return:
         """
-        logger.debug(f"Sensor rectangle= {self.sensor_rectangle}")
+
+        sensor_rectangle = self._shift_object_like_sensor(self.sensor.get_total_rectangle())
+        original_segments = self.sensor.get_array_segments()
+        sensor_segments = [self._shift_object_like_sensor(s) for s in original_segments]
 
         margin = 10
-        interesting_strips = self.wheel.strips[-margin:]
-        interesting_strips += self.wheel.strips[:margin]
-        logger.debug(f"Interesting strips: {interesting_strips}")
-        # for strip in self.wheel.strips[-10, ]:
-        plotter = Plotter()
-        plotter.add_polygon(self.sensor_rectangle, color='green', units='um')
-        for s in interesting_strips:
-            plotter.add_polygon(s)
+        original_strips = self.wheel.strips[-margin:]
+        original_strips += self.wheel.strips[:margin]
+        rotated_strips = [affinity.rotate(s,
+                                angle,
+                                origin=(0, 0),
+                                use_radians=False) for s in original_strips]
 
-        plotter.execute()
+        logger.debug(f"Interesting strips: {rotated_strips}")
+        logger.debug(f"Sensor rectangle= {sensor_rectangle}")
+        logger.debug(f"Sensor segments: {sensor_segments}")
 
-        readout = np.zeros(self.sensor.N)
+        # plotter = Plotter()
+        # plotter.add_polygon(sensor_rectangle, color='green')
+        # for s in rotated_strips:
+        #     plotter.add_polygon(s)
+        #
+        # for s in sensor_segments:
+        #     plotter.add_polygon(s, color='blue')
+        #
+        # plotter.execute()
+
+
+        max_area = sensor_segments[0].area
+        readout = max_area*np.ones(self.sensor.N)
+
+        set_of_intersecting = [s for s in rotated_strips if s.intersects(sensor_rectangle)]
+        logger.debug(f"Set of intersecting strips: {set_of_intersecting}")
+
+        for i in range(0, self.sensor.N):
+            segment = sensor_segments[i]
+            for strip in rotated_strips:
+                readout[i] -= segment.intersection(strip).area #(1.03-0.06*np.random.rand()) # stripes are black so we subtract light when they are
+
         return readout
 
 
@@ -121,8 +126,20 @@ if __name__ == "__main__":
         config = json.load(f)
 
     sensor = LinearCCDSensor.from_json(config["TSL1401"])
-    wheel = EncoderWheel(R_mm, 3600, 12)
+    wheel = EncoderWheel(R_mm, 3600, 7.5)
 
-    readout_generator = ReadoutGenerator(sensor, wheel, sensor_tilt_deg=5, sensor_shift_um=(27, -64))
+    readout_generator = ReadoutGenerator(sensor, wheel, sensor_tilt_deg=4, sensor_shift_um=(27, -300))
     readout = readout_generator.for_angle(0)
     logger.info(f"Readout = [N={sensor.N}] {readout}")
+
+    plt.figure()
+    ax = plt.gca()
+    ax.plot(range(0, len(readout)), readout_generator.for_angle(0), color='black')
+    ax.plot(range(0, len(readout)), readout_generator.for_angle(0.02), color='green')
+    ax.plot(range(0, len(readout)), readout_generator.for_angle(0.04), color='blue')
+    ax.plot(range(0, len(readout)), readout_generator.for_angle(0.06), color='red')
+    ax.set(xlabel='position (px)', ylabel='intensity (a.u.)',
+           title='Linear scan of encoder')
+    ax.grid()
+
+    plt.show()

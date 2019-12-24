@@ -8,21 +8,23 @@ class EncoderWheel:
         self.radius_mm = r_mm
         self.count = cpr
         self.line_height_mm = h_mm
+        self.circ_um = 2.0*pi*1000*self.radius_mm
+        self.d_um = self.circ_um / (2.0 * self.count)
+        self.dphi_deg = 360/(self.count)
         self.strips = self._create_strips_polygons()
 
     def _create_strips_polygons(self):
+        m = 1000 # ums in mm
         s = []
-        circ = 2.0*pi*self.radius_mm
-        d = circ / (2.0 * self.count)
+        r = m*self.radius_mm
         strip = Polygon([
-            (-d/2, self.radius_mm),
-            (d/2, self.radius_mm),
-            (d/2, self.radius_mm + self.line_height_mm),
-            (-d/2, self.radius_mm + self.line_height_mm)])
-        dphi = 360/(self.count)
+            (-self.d_um/2, r),
+            (self.d_um/2, r),
+            (self.d_um/2, r + m*self.line_height_mm),
+            (-self.d_um/2, r + m*self.line_height_mm)])
         for i in range(0, self.count):
             s.append(affinity.rotate(strip,
-                                     i*dphi,
+                                     i*self.dphi_deg,
                                      origin=(0, 0),
                                      use_radians=False))
         return s

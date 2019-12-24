@@ -26,7 +26,7 @@ def split_vertically_by_threshold(data, threshold, raw_data=None):
     :param threshold:
     :return: crossings is array of indices where crossing above/under threshold occurs
     """
-    if raw_data is not None:
+    if raw_data is None:
         raw_data = data
     crossings = []
     hills = []
@@ -36,7 +36,6 @@ def split_vertically_by_threshold(data, threshold, raw_data=None):
 
     p_index = 0
     for p in data:
-        current_hill.append(raw_data[p_index])
         if direction == "minus":
             if p > threshold:
                 direction = "plus"
@@ -49,6 +48,8 @@ def split_vertically_by_threshold(data, threshold, raw_data=None):
                 crossings.append(p_index)
                 hills.append(current_hill.copy())
                 current_hill = []
+
+        current_hill.append(raw_data[p_index])
         p_index += 1
     hills.append(current_hill.copy())
     return crossings, hills

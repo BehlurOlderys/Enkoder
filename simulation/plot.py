@@ -83,7 +83,7 @@ area = []
 K = 10
 relevant_indices = [i for i in range(M-K, M)] + [j for j in range(0, K)]
 
-for sensor_index in range(0, N):
+for ssensor_index in range(0, N):
     area_s = 0
     for stripe_index in relevant_indices:
         area_s += stripes[stripe_index].intersection(s[sensor_index]).area

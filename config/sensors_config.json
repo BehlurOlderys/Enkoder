@@ -4,5 +4,11 @@
 	"pixel_width_um": 55.5,
     "pixel_height_um": 63.5,
     "horizontal_spacing_um": 8
+  },
+  "TCD1304": {
+    "N": 3648,
+    "pixel_width_um": 8,
+    "pixel_height_um": 200,
+    "horizontal_spacing_um": 0
   }
 }
