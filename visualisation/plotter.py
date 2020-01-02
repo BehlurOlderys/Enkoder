@@ -17,6 +17,9 @@ class Plotter:
         t = np.arange(0.0, len(y))
         self.ax.plot(t, y)
 
+    def plot_points(self, y, xrange):
+        self.ax.plot(xrange, y, 'ro')
+
     def save_plot(self):
         plt.savefig('plot_'+str(self.N))
         self.N += 1

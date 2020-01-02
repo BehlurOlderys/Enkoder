@@ -1,7 +1,7 @@
 from hardware.linear_ccd_sensor import LinearCCDSensor
 from hardware.encoder_wheel import EncoderWheelWithTopAndBottomStrips
 from processing.line_fitter import LineFitter, split_vertically_by_threshold
-from processing.y_shift_estimator import SensorYShiftEstimator, normalize
+from processing.y_shift_estimator import SensorYShiftEstimator, normalize, gauss_4
 from visualisation.plotter import Plotter
 from simulation.simulate_readouts import ReadoutGenerator
 from matplotlib import pyplot
@@ -20,6 +20,47 @@ R_mm = obwod_mm / (2*np.pi)
 logging.getLogger("matplotlib").propagate = False
 
 logger = logging.getLogger(__name__)
+
+
+class Fragment:
+    def __init__(self, begin, end):
+        self.begin = begin
+        self.end = end
+
+    @property
+    def length(self):
+        return self.end - self.begin
+
+    def __repr__(self):
+        return f"[{self.begin}, {self.end})"
+
+
+def get_longest_line_fragment(raw):
+    image = normalize(raw)
+    image = gauss_4(image)
+    image = np.diff(image, n=2)
+
+    threshold = 0.002  # very carefully chosen!
+    fragments = []
+    last_line_index = -1
+    N = len(image)
+    is_line = False
+    for i in range(0, N):
+        p = abs(image[i])
+        if not is_line and p < threshold:
+            is_line = True
+            last_line_index = i
+        if is_line and p > threshold:
+            is_line = False
+            fragments.append(Fragment(last_line_index, i+1))
+
+    if is_line:
+        fragments.append(Fragment(last_line_index, N))
+
+    fragments.sort(key=lambda x: x.length, reverse=True)
+    logging.debug(f"Fragments = {fragments}. Longest fragment = {fragments[0]}")
+    return fragments[0]
+
 
 def get_crossings(image, threshold):
     c = []
@@ -47,6 +88,7 @@ class PointAlgo:
         self.N = n
         self.percent = p
 
+
 class RevisitedLineFitter:
     def __init__(self, wheel, sensor):
         self.R_um = wheel.radius_mm * 1000
@@ -54,34 +96,26 @@ class RevisitedLineFitter:
         self.delta_rad = np.pi * wheel.dphi_deg / 180.0
         self.px_um = sensor.dx
 
-    def _get_right_wing(self, image, coeff):
-        return PointAlgo(0,0,0,0)
+    def get_crossings(self, image):
+        image = normalize(image)
+        c = []
 
-    def _get_left_wing(self, image, coeff):
-        return PointAlgo(0, 0, 0, 0)
 
-    def _get_wings(self, image, coeff):
-        A = self._get_left_wing(image, coeff)
-        B = self._get_right_wing(image, coeff)
-        return A, B
+        k = np.arange(0.1, 1, (1.0/max_crossings))
+        for t in k:
+            raw_c = get_crossings(image, t)
+            c += raw_c
 
-    def get_alpha(self, image):
-        image = normalize(image[8:120])
-        A, B = self._get_wings(image, 0.5)
-        alpha_rad = A.y - B.y / self.d_um
-        return alpha_rad
+        logger.info(f"Len c = {len(c)}")
+        return c
 
     def get_beta_and_height(self, image):
         image = normalize(image)
-        logger.info(f"Min image = {min(image)}, max = {max(image)}")
-
-
         c = []
         k = np.arange(0.1, 1, (1.0/max_crossings))
         for t in k:
             raw_c = get_crossings(image, t)
             c += raw_c
-        # c = get_crossings(image, 0.7)
 
         logger.info(f"Len c = {len(c)}")
         return c
@@ -109,163 +143,60 @@ if __name__ == "__main__":
     odleglosc_dolnego_paska = 6*grubosc_czarnego_um
     grubosc_dolnego_paska = 3*grubosc_czarnego_um
     wheel = EncoderWheelWithTopAndBottomStrips(R_mm, N_paskow, 6.4, odleglosc_dolnego_paska) #, grubosc_dolnego_paska)
-    arcsek = 0.1/360
-    begin_a = 0*arcsek
 
-    angles = np.arange(begin_a, begin_a+360*arcsek, 5*arcsek)
-    p_angles = [4 + a for a in angles]
-    "for angle 4.6 - median of 50 betas = 4.24(3, 6, 4.25) - 36"
-    "for angle 4.5 - median of 50 betas = 4.18(1-5) - 32"
-    "for angle 4.4 - median of 50 betas = 4.13(0-3) -27"
-    "for angle 4.3 - median of 50 betas = 4.06(9, 4.08, 4.08) -24"
-    dev = []
-    rev = []
-    y_estimator = SensorYShiftEstimator(sensor, wheel)
-    for i in range(0, 200):
-        tested_y_shift = -831.4724514 + 164.0*np.random.rand()
-        readout_generator = ReadoutGenerator(sensor, wheel, sensor_tilt_deg=1.3925103, sensor_shift_um=(0, tested_y_shift))
+    arcsek = 0.1/360  # 1/3600 of one degree
+    begin_angle = 100
+    angles = np.arange(begin_angle, begin_angle + 1, 5000)*arcsek
 
-        tested_angle_deg = 0.02784789
+    readout_generator = ReadoutGenerator(sensor, wheel, sensor_tilt_deg=1.4, sensor_shift_um=(3, -765))
+    fitter = RevisitedLineFitter(wheel, sensor)
 
-        raw = readout_generator.for_angle(tested_angle_deg)
-        y_estimate_bot = y_estimator.estimate_bottom_edge(raw)
-        y_estimate_top = y_estimator.estimate_top_edge(raw)
-        print(f"{i} ESTIMATE BOT = {y_estimate_bot}, REAL = {tested_y_shift}, ERROR = {tested_y_shift + y_estimate_bot}")
-        # print(f"{i} ESTIMATE TOP = {y_estimate_top}, REAL = {tested_y_shift}, ERROR = {tested_y_shift + y_estimate_top}")
-        # print(f"Tested = {tested_y_shift}, Result sredni = {result_sredni}, dev = {tested_y_shift + result_sredni}")
+    useful_begin = 15
+    useful_end = 112
 
-        y_estimate = 0.5*y_estimate_bot + 0.5*y_estimate_top
+    index = 0
+    for a in angles:
+        raw = readout_generator.for_angle(a)
+        useful_raw = raw[useful_begin:useful_end]
+        logger.info(f"Index = {index}. Angle = {a}")
+        crossings = fitter.get_crossings(useful_raw)
+        logger.info(f"Len crossings = {len(crossings)}")
 
-        dev.append(tested_y_shift + y_estimate)
-        rev.append(tested_y_shift + y_estimate_top)
 
+        # diffs = [(current - last, t) for (current, last, t) in zip(crossings, last_crossings, thresholds)]
+        # last_crossings = crossings
+        # logger.info(f"Len diffs = {len(diffs)}")
+        # well_behaved = np.array([(k, t) for (k, t) in diffs if abs(k) < c_threshold])
+        # logger.info(f"Len well behaved = {len(well_behaved)}")
+        # #betas[index, 0:len(well_behaved)] = well_behaved
+        # if well_behaved.any() and index > 0:
+        #     # print(f"Well behaved = {well_behaved}")
+        #     ccccc, ttttt = zip(*well_behaved)
+        #     def fffff(k):
+        #         return 20*(1.0 - k)
+        #     ttttt = np.array(ttttt)
+        #     last_angle += np.average(ccccc)
+        #     compare_angle += np.average(ccccc, weights=fffff(ttttt))
+        # mean_cs[index] = last_angle
+        # mean_cs_comp[index] = compare_angle
+        # index += 1
 
     plotter = Plotter()
+    angles = [int(3600*a) for a in angles]
 
-    # plotter.plot_simple(raw)
-    pyplot.hist(dev, bins=16)
-    pyplot.hist(rev, color='red', bins=16)
+    original_raw = useful_raw
 
+    fragment = get_longest_line_fragment(original_raw)
+    bbb = fragment.begin
+    eee = fragment.end
+
+    plotter.plot_simple(original_raw)
+    plotter.get_axes().plot(range(bbb, eee), original_raw[bbb:eee])
     plotter.show_plot()
-    # now how to guess:
-    # tested_angle_deg?
-    # tested_y_shift?
-
-    # plotter.plot_simple(sample)
-    # plotter.plot_simple(g_sample)
-    # plotter.plot_simple(d_sample)
 
 
 
-    fitter = RevisitedLineFitter(wheel, sensor)  # LineFitter(sensor)
 
-    # raw_init = readout_generator.for_angle(0)
-    # raws = []
-    # betas = []
-    # hhhs = []
-    # ttts = []
-    # kkks = []
-    # b_init = fitter.get_beta_and_height(raw_init)
-    # index = 0
-    # min_l = 10
-    # NNN = len(angles)
-    # mean_cs = np.zeros(NNN)
-    # mean_cs_comp = np.zeros(NNN)
-    # mean_cs[0] = 0
-    # mean_cs_comp[0] = 0
-    #
-    # max_readings = max_crossings*3
-    # last_crossings = np.zeros(max_readings)
-    # betas = np.zeros([NNN, max_readings])
-    # last_angle = 0
-    # compare_angle = 0
-    # c_threshold = 2 # 128 is max
-    #
-    # hhh = [[0, 1], [1, 2]]
-    #
-    # with open("test.json", 'w') as f:
-    #     json.dump(hhh, f)
-    #
-    # hhh = []
-    #
-    #
-    # for a in angles:
-    #     raw = readout_generator.for_angle(a)
-    #     raws.append(raw)
-    #     logger.info(f"Index = {index}. Angle = {a}")
-    #     crossings = fitter.get_beta_and_height(raw)
-    #     crossings, thresholds = zip(*crossings)
-    #     hhh.append(crossings)
-    #     logger.info(f"Len crossings = {len(crossings)}")
-    #
-    #
-    #     diffs = [(current - last, t) for (current, last, t) in zip(crossings, last_crossings, thresholds)]
-    #     last_crossings = crossings
-    #     logger.info(f"Len diffs = {len(diffs)}")
-    #     well_behaved = np.array([(k, t) for (k, t) in diffs if abs(k) < c_threshold])
-    #     logger.info(f"Len well behaved = {len(well_behaved)}")
-    #     #betas[index, 0:len(well_behaved)] = well_behaved
-    #     if well_behaved.any() and index > 0:
-    #         # print(f"Well behaved = {well_behaved}")
-    #         ccccc, ttttt = zip(*well_behaved)
-    #         def fffff(k):
-    #             return 20*(1.0 - k)
-    #         ttttt = np.array(ttttt)
-    #         last_angle += np.average(ccccc)
-    #         compare_angle += np.average(ccccc, weights=fffff(ttttt))
-    #     mean_cs[index] = last_angle
-    #     mean_cs_comp[index] = compare_angle
-    #     index += 1
-    #
-    # with open("log.json", 'w') as f:
-    #     json.dump(hhh, f)
-    # logger.info(f"Minl = {min_l}")
-    #
-    #
-
-    # result = open("result.txt", "w")
-    # for i in range(0, len(betas)):
-    #     written = f"{i}\t{angles[i]}"
-    #     for k in range(0, min_l):
-    #         written += f"\t{betas[i][k]}"
-    #     written += "\n"
-    #     result.write(written)
-    # result.close()
-    #
-    # betas = np.array(betas)
-    #
-    # print(f"SHape betas = {betas.shape}")
-    # cs = np.array([[c[i] for c in betas] for i in range(0, min_l)])
-    # print(f"Shape cs={cs.shape}")
-    #
-    # B = len(betas)
-    #
-    # diffs = np.zeros((min_l, B))
-    # for i in range(1, B):
-    #     for k in range(0, min_l):
-    #         diffs[k][i] = cs[k][i] - cs[k][i-1]
-    #
-    # # for i in range(0, min_l):
-    # #     cs[i] = [c - cs[i][0] for c in cs[i]]
-    #
-    # cs_mean = np.zeros(B)
-    # for i in range(0, B):
-    #     well_behaved = [k for k in diffs[:, i] if abs(k) < c_threshold]
-    #     cs_mean[i] = np.mean(well_behaved)
-    #     if i > 0:
-    #         cs_mean[i] += cs_mean[i-1]
-    #
-    #
-    # # for i in range(0, min_l):
-    # #     plotter.get_axes().plot(angles, cs_mean[i])
-    # plotter = Plotter()
-    # angles = [int(3600*a) for a in angles]
-    # plotter.get_axes().plot(angles, mean_cs)
-    # plotter.get_axes().plot(angles, mean_cs_comp)
-
-
-
-    # plotter.plot_simple(normalize(raws[0]))
 
 
     # for k in range(0, max_readings):

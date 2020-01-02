@@ -76,4 +76,4 @@ class EncoderWheelWithTopAndBottomStrips(EncoderWheel):
             (x0, y1)
         ])
 
-        return [line_bottom, line_top] #+ EncoderWheel._create_strips_polygons(self, angle_deg)
+        return [line_bottom, line_top] + EncoderWheel._create_strips_polygons(self, angle_deg)
