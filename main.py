@@ -1,32 +1,25 @@
 from hardware.linear_ccd_sensor import LinearCCDSensor
-from hardware.encoder_wheel import EncoderWheel
+from hardware.encoder_wheel import EncoderWheelWithTopAndBottomStrips
 from processing.line_fitter import LineFitter, split_vertically_by_threshold
+from processing.y_shift_estimator import SensorYShiftEstimator, normalize
 from visualisation.plotter import Plotter
 from simulation.simulate_readouts import ReadoutGenerator
-
-from scipy import interpolate
+from matplotlib import pyplot
 import numpy as np
 import json
 import argparse
 import logging
 from config.config_utils import get_default_sensors_config
 
-grubosc_paska = 0.128
+grubosc_paska_mm = 0.128
 N_paskow = 3600
-obwod_mm = grubosc_paska*N_paskow
+obwod_mm = grubosc_paska_mm*N_paskow
 R_mm = obwod_mm / (2*np.pi)
 
 # necessary to disable np debug nonsense:
 logging.getLogger("matplotlib").propagate = False
 
 logger = logging.getLogger(__name__)
-
-
-def smooth(y, box_pts):
-    box = np.ones(box_pts)/box_pts
-    y_smooth = np.convolve(y, box, mode='same')
-    return y_smooth
-
 
 def get_crossings(image, threshold):
     c = []
@@ -45,30 +38,14 @@ def get_crossings(image, threshold):
     return c
 
 
-def get_useful_range(image):
-    N = len(image)
-    b = -1
-    e = -1
-    for i in range(0, N):
-        if image[i] < 0.9:
-            b = i
-            break
+max_crossings = 32
 
-    for i in reversed(range(0, N)):
-        if image[i] < 0.9:
-            e = i
-            break
-    return b, e
-
-
-def normalize(image):
-    amax = np.amax(image)
-    amin = np.amin(image)
-    amp = amax - amin
-    image = (image - amin) / amp
-    return image
-
-max_crossings = 16
+class PointAlgo:
+    def __init__(self, x, y, n, p):
+        self.x = x
+        self.y = y
+        self.N = n
+        self.percent = p
 
 class RevisitedLineFitter:
     def __init__(self, wheel, sensor):
@@ -77,12 +54,28 @@ class RevisitedLineFitter:
         self.delta_rad = np.pi * wheel.dphi_deg / 180.0
         self.px_um = sensor.dx
 
+    def _get_right_wing(self, image, coeff):
+        return PointAlgo(0,0,0,0)
+
+    def _get_left_wing(self, image, coeff):
+        return PointAlgo(0, 0, 0, 0)
+
+    def _get_wings(self, image, coeff):
+        A = self._get_left_wing(image, coeff)
+        B = self._get_right_wing(image, coeff)
+        return A, B
+
+    def get_alpha(self, image):
+        image = normalize(image[8:120])
+        A, B = self._get_wings(image, 0.5)
+        alpha_rad = A.y - B.y / self.d_um
+        return alpha_rad
+
     def get_beta_and_height(self, image):
         image = normalize(image)
         logger.info(f"Min image = {min(image)}, max = {max(image)}")
 
-        signal_begin, signal_end = get_useful_range(image)
-        image = image[8:120]
+
         c = []
         k = np.arange(0.1, 1, (1.0/max_crossings))
         for t in k:
@@ -93,58 +86,6 @@ class RevisitedLineFitter:
 
         logger.info(f"Len c = {len(c)}")
         return c
-
-        if len(c) < 3:
-            return c[0], c[1], 0, 0
-
-        if len(c) < 4:
-            return 0, 0, 0, 0
-
-        return c[0], c[1], c[2], c[3]
-        #logger.info(f"Len of c: {len(c)}, Len of h {len(hills)}")
-        logger.info(f"Crossings: {c}")
-        begin_i = c[2]
-        end_i = c[3]
-        h = image[6:120]
-        t = np.average(range(begin_i, end_i), weights=h)
-
-        ch = zip(c, hills[1:])
-        mass_centers = []
-        for (c, h) in ch:
-            begin_i = c
-            end_i = c + len(h)
-            mass_center = np.average(range(begin_i, end_i), weights=h)
-            mass_centers.append((mass_center, h[0] > threshold))
-
-        # centers_above = [c for (c, is_above) in mass_centers if is_above]
-        centers_under = [c for (c, is_above) in mass_centers if not is_above]
-
-        # logger.debug(f"Mass centers above: {centers_above}")
-        # logger.debug(f"Mass centers under: {centers_under}")
-        # L1 = self.px_um * (centers_under[2] - centers_under[1])
-        # L2 = self.px_um * (centers_under[3] - centers_under[2])
-        if len(centers_under) < 4:
-            return 0, 0, 0
-        L1 = (centers_under[2] - centers_under[1])
-        #beta = 2.0 * (self.d_um) / (L1 * self.px_um)
-        h = (centers_under[1], centers_under[2])
-        # L2 = (centers_under[3] - centers_under[2])
-
-        #print(f"L1 = {L1} as integer ratio: {L1.as_integer_ratio()}")
-        #print(f"L2 = {L2} as integer ratio: {L2.as_integer_ratio()}")
-        # K = (L2 - L1)
-        #print(f"K={K}, K as integer ratio: {K.as_integer_ratio()}")
-        # dp2 = self.delta_rad/2.0
-        # beta = dp2 * ((3.0 * L2 + L1) / K)
-        #print(f"beta = {dp2*((3.0*L2 + L1)/(L2 - L1 + 0.001))}")
-
-        #logger.debug(f"beta={beta}, L1 = {L1}, L2 = {L2}, K= {K} R={self.R_um}, R*(L1-L2)={self.R_um*(L1 - L2)}, L1^2 = {L1*L1}, L1^2/(L2-L1) = {L1*L1/(L2-L1)}, delta = {180*self.delta_rad/np.pi}")
-        # h = (self.R_um*(L1 - L2) + L1*L1)/(L2 - L1)
-        # beta = np.pi/2.0 - (self.d_um+h*self.delta_rad)/L1
-        # for h in hills[1:]:
-        #     mass_center = np.average(range(h, weights=range(10,0,-1))
-
-        return beta, h, threshold
 
 
 if __name__ == "__main__":
@@ -165,70 +106,120 @@ if __name__ == "__main__":
     logger.info(sensor)
     logger.debug(f"Creating line fitter...")
 
-
-    wheel = EncoderWheel(R_mm, N_paskow, 28)
-
+    grubosc_czarnego_um = grubosc_paska_mm*1000*0.5
+    odleglosc_dolnego_paska = 6*grubosc_czarnego_um
+    grubosc_dolnego_paska = 3*grubosc_czarnego_um
+    wheel = EncoderWheelWithTopAndBottomStrips(R_mm, N_paskow, 6.4, odleglosc_dolnego_paska) #, grubosc_dolnego_paska)
     arcsek = 0.1/360
-    begin_a = 30*arcsek
+    begin_a = 0*arcsek
 
-    angles = np.arange(begin_a, begin_a+10*arcsek, 0.5*arcsek)
+    angles = np.arange(begin_a, begin_a+360*arcsek, 5*arcsek)
     p_angles = [4 + a for a in angles]
     "for angle 4.6 - median of 50 betas = 4.24(3, 6, 4.25) - 36"
     "for angle 4.5 - median of 50 betas = 4.18(1-5) - 32"
     "for angle 4.4 - median of 50 betas = 4.13(0-3) -27"
     "for angle 4.3 - median of 50 betas = 4.06(9, 4.08, 4.08) -24"
-    readout_generator = ReadoutGenerator(sensor, wheel, sensor_tilt_deg=1.2, sensor_shift_um=(30, -200))
+    dev = []
+    rev = []
+    y_estimator = SensorYShiftEstimator(sensor, wheel)
+    for i in range(0, 200):
+        tested_y_shift = -831.4724514 + 164.0*np.random.rand()
+        readout_generator = ReadoutGenerator(sensor, wheel, sensor_tilt_deg=1.3925103, sensor_shift_um=(0, tested_y_shift))
+
+        tested_angle_deg = 0.02784789
+
+        raw = readout_generator.for_angle(tested_angle_deg)
+        y_estimate_bot = y_estimator.estimate_bottom_edge(raw)
+        y_estimate_top = y_estimator.estimate_top_edge(raw)
+        print(f"{i} ESTIMATE BOT = {y_estimate_bot}, REAL = {tested_y_shift}, ERROR = {tested_y_shift + y_estimate_bot}")
+        # print(f"{i} ESTIMATE TOP = {y_estimate_top}, REAL = {tested_y_shift}, ERROR = {tested_y_shift + y_estimate_top}")
+        # print(f"Tested = {tested_y_shift}, Result sredni = {result_sredni}, dev = {tested_y_shift + result_sredni}")
+
+        y_estimate = 0.5*y_estimate_bot + 0.5*y_estimate_top
+
+        dev.append(tested_y_shift + y_estimate)
+        rev.append(tested_y_shift + y_estimate_top)
+
+
+    plotter = Plotter()
+
+    # plotter.plot_simple(raw)
+    pyplot.hist(dev, bins=16)
+    pyplot.hist(rev, color='red', bins=16)
+
+    plotter.show_plot()
+    # now how to guess:
+    # tested_angle_deg?
+    # tested_y_shift?
+
+    # plotter.plot_simple(sample)
+    # plotter.plot_simple(g_sample)
+    # plotter.plot_simple(d_sample)
+
+
 
     fitter = RevisitedLineFitter(wheel, sensor)  # LineFitter(sensor)
 
-    raw_init = readout_generator.for_angle(0)
-    raws = []
-    betas = []
-    hhhs = []
-    ttts = []
-    kkks = []
-    b_init = fitter.get_beta_and_height(raw_init)
-    index = 0
-    min_l = 10
-    NNN = len(angles)
-    mean_cs = np.zeros(NNN)
-    mean_cs[0] = 0
-
-    max_readings = max_crossings*3
-    last_crossings = np.zeros(max_readings)
-    betas = np.zeros([NNN, max_readings])
-    last_angle = 0
-    c_threshold = 2 # 128 is max
-
-    hhh = [[0, 1], [1, 2]]
-
-    with open("test.json", 'w') as f:
-        json.dump(hhh, f)
-
-    hhh = []
-
-
-    for a in angles:
-        raw = readout_generator.for_angle(a)
-        raws.append(raw)
-        logger.info(f"Index = {index}. Angle = {a}")
-        crossings = fitter.get_beta_and_height(raw)
-        hhh.append(crossings)
-        logger.info(f"Len crossings = {len(crossings)}")
-
-        diffs = [current - last for (current, last) in zip(crossings, last_crossings)]
-        last_crossings = crossings
-        logger.info(f"Len diffs = {len(diffs)}")
-        well_behaved = np.array([k for k in diffs if abs(k) < c_threshold])
-        logger.info(f"Len well behaved = {len(well_behaved)}")
-        betas[index, 0:len(well_behaved)] = well_behaved
-        if well_behaved.any() and index > 0:
-            last_angle += np.mean(well_behaved)
-        mean_cs[index] = last_angle
-        index += 1
-
-    with open("log.json", 'w') as f:
-        json.dump(hhh, f)
+    # raw_init = readout_generator.for_angle(0)
+    # raws = []
+    # betas = []
+    # hhhs = []
+    # ttts = []
+    # kkks = []
+    # b_init = fitter.get_beta_and_height(raw_init)
+    # index = 0
+    # min_l = 10
+    # NNN = len(angles)
+    # mean_cs = np.zeros(NNN)
+    # mean_cs_comp = np.zeros(NNN)
+    # mean_cs[0] = 0
+    # mean_cs_comp[0] = 0
+    #
+    # max_readings = max_crossings*3
+    # last_crossings = np.zeros(max_readings)
+    # betas = np.zeros([NNN, max_readings])
+    # last_angle = 0
+    # compare_angle = 0
+    # c_threshold = 2 # 128 is max
+    #
+    # hhh = [[0, 1], [1, 2]]
+    #
+    # with open("test.json", 'w') as f:
+    #     json.dump(hhh, f)
+    #
+    # hhh = []
+    #
+    #
+    # for a in angles:
+    #     raw = readout_generator.for_angle(a)
+    #     raws.append(raw)
+    #     logger.info(f"Index = {index}. Angle = {a}")
+    #     crossings = fitter.get_beta_and_height(raw)
+    #     crossings, thresholds = zip(*crossings)
+    #     hhh.append(crossings)
+    #     logger.info(f"Len crossings = {len(crossings)}")
+    #
+    #
+    #     diffs = [(current - last, t) for (current, last, t) in zip(crossings, last_crossings, thresholds)]
+    #     last_crossings = crossings
+    #     logger.info(f"Len diffs = {len(diffs)}")
+    #     well_behaved = np.array([(k, t) for (k, t) in diffs if abs(k) < c_threshold])
+    #     logger.info(f"Len well behaved = {len(well_behaved)}")
+    #     #betas[index, 0:len(well_behaved)] = well_behaved
+    #     if well_behaved.any() and index > 0:
+    #         # print(f"Well behaved = {well_behaved}")
+    #         ccccc, ttttt = zip(*well_behaved)
+    #         def fffff(k):
+    #             return 20*(1.0 - k)
+    #         ttttt = np.array(ttttt)
+    #         last_angle += np.average(ccccc)
+    #         compare_angle += np.average(ccccc, weights=fffff(ttttt))
+    #     mean_cs[index] = last_angle
+    #     mean_cs_comp[index] = compare_angle
+    #     index += 1
+    #
+    # with open("log.json", 'w') as f:
+    #     json.dump(hhh, f)
     # logger.info(f"Minl = {min_l}")
     #
     #
@@ -268,9 +259,10 @@ if __name__ == "__main__":
     #
     # # for i in range(0, min_l):
     # #     plotter.get_axes().plot(angles, cs_mean[i])
-    plotter = Plotter()
-    angles = [int(3600*a) for a in angles]
-    plotter.get_axes().plot(angles, mean_cs)
+    # plotter = Plotter()
+    # angles = [int(3600*a) for a in angles]
+    # plotter.get_axes().plot(angles, mean_cs)
+    # plotter.get_axes().plot(angles, mean_cs_comp)
 
 
 
@@ -321,8 +313,8 @@ if __name__ == "__main__":
     # plotter.get_axes().plot(angles, [h for (h, g) in hhhs])
     # plotter.get_axes().plot(angles, [g for (h, g) in hhhs])
     # plotter.get_axes().plot(angles, [180*b/np.pi for b in betas])
-    plotter.save_plot()
-    plotter.show_plot()
+    # plotter.save_plot()
+    # plotter.show_plot()
     # plotter.plot_simple(p_angles)
     # N = len(raw_stack)
     # crossings, coefficients, hills = fitter.fit_line(raw_stack)

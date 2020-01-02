@@ -4,6 +4,7 @@ from hardware.encoder_wheel import EncoderWheel
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 from shapely import affinity
+from visualisation.plotter import Plotter
 import numpy as np
 import json
 import logging
@@ -63,10 +64,10 @@ class ReadoutGenerator:
                             use_radians=False)
         return affinity.translate(p, x, y + r_um)
 
-    def for_angle(self, angle):
+    def for_angle(self, angle_deg):
         """
         On encoder wheel with radius R and coordinates starting at center of wheel it would be (0, R).
-        :param angle:
+        :param angle_deg:
         :return:
         """
 
@@ -74,13 +75,10 @@ class ReadoutGenerator:
         original_segments = self.sensor.get_array_segments()
         sensor_segments = [self._shift_object_like_sensor(s) for s in original_segments]
 
-        margin = 10
-        original_strips = self.wheel.strips[-margin:]
-        original_strips += self.wheel.strips[:margin]
-        rotated_strips = [affinity.rotate(s,
-                                angle,
-                                origin=(0, 0),
-                                use_radians=False) for s in original_strips]
+        # margin = 10
+        # original_strips = self.wheel.strips[-margin:]
+        # original_strips += self.wheel.strips[:margin]
+        rotated_strips = self.wheel.strips(angle_deg)
 
         logger.debug(f"Interesting strips: {rotated_strips}")
         logger.debug(f"Sensor rectangle= {sensor_rectangle}")
@@ -89,8 +87,8 @@ class ReadoutGenerator:
         # plotter = Plotter()
         # plotter.add_polygon(sensor_rectangle, color='green')
         # for s in rotated_strips:
-        #     plotter.add_polygon(s)
-        #
+        #     plotter.add_polygon(s, color='red')
+        # #
         # for s in sensor_segments:
         #     plotter.add_polygon(s, color='blue')
         #
@@ -101,7 +99,7 @@ class ReadoutGenerator:
         readout = max_area*np.ones(self.sensor.N)
 
         set_of_intersecting = [s for s in rotated_strips if s.intersects(sensor_rectangle)]
-        logger.debug(f"Set of intersecting strips: {set_of_intersecting}")
+        # logger.info(f"Set of intersecting strips: {set_of_intersecting}")
 
         for i in range(0, self.sensor.N):
             segment = sensor_segments[i]

@@ -20,8 +20,12 @@ class LinearCCDSensor:
         return self.pixel_h_um
 
     @property
-    def width(self):
-        return self.N*(self.pixel_w_um + self.horizontal_spacing_um)
+    def pixel_pitch_h_um(self):
+        return self.pixel_w_um + self.horizontal_spacing_um
+
+    @property
+    def width_um(self):
+        return self.N*self.pixel_pitch_h_um
 
     def get_total_rectangle(self):
         total_w = self.N * self.dx
