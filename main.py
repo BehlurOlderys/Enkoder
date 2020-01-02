@@ -80,8 +80,7 @@ class RevisitedLineFitter:
         k = np.arange(0.1, 1, (1.0/max_crossings))
         for t in k:
             raw_c = get_crossings(image, t)
-            ys = [t] * len(raw_c)
-            c += zip(raw_c, ys)
+            c += raw_c
         # c = get_crossings(image, 0.7)
 
         logger.info(f"Len c = {len(c)}")
