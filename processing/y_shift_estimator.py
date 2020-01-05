@@ -16,6 +16,18 @@ def gauss_4(y):
     return y_smooth
 
 
+def gauss_5(y):
+    kernel = (1.0 / 256.0) * np.array([1, 8, 28, 56, 70, 56, 28, 8, 1])
+    y_smooth = np.convolve(y, kernel, mode='same')
+    return y_smooth
+
+
+def gauss_6(y):
+    kernel = (1.0 / 1024.0) * np.array([1, 10, 45, 120, 210, 252, 210, 120, 45, 10, 1])
+    y_smooth = np.convolve(y, kernel, mode='same')
+    return y_smooth
+
+
 def derivative(y):
     kernel = np.array([-0.5, 0, 0.5])
     y_smooth = np.convolve(y, kernel, mode='same')

@@ -1,10 +1,13 @@
 from hardware.linear_ccd_sensor import LinearCCDSensor
 from hardware.encoder_wheel import EncoderWheelWithTopAndBottomStrips
 from processing.line_fitter import LineFitter, split_vertically_by_threshold
-from processing.y_shift_estimator import SensorYShiftEstimator, normalize, gauss_4
+from scipy.ndimage import gaussian_filter1d
+from processing.y_shift_estimator import SensorYShiftEstimator, normalize, gauss_4, gauss_5, gauss_6
 from visualisation.plotter import Plotter
 from simulation.simulate_readouts import ReadoutGenerator
 from matplotlib import pyplot
+from scipy.interpolate import interp1d
+from scipy.signal import savgol_filter
 import numpy as np
 import json
 import argparse
@@ -35,47 +38,57 @@ class Fragment:
         return f"[{self.begin}, {self.end})"
 
 
-def get_longest_line_fragment(raw):
-    image = normalize(raw)
-    image = gauss_4(image)
-    image = np.diff(image, n=2)
+def get_longest_line_fragment(image):
 
-    threshold = 0.002  # very carefully chosen!
+    image = savgol_filter(image, 25, 2)
+    image = gauss_4(image)
+    image = np.diff(image, n=1)[4:-5]
+    # plotter = Plotter()
+    # plotter.plot_simple(image)
+    # # plotter.plot_simple(image)
+    # plotter.show_plot()
+
+    threshold = (max(image) - min(image)) / 10.0
     fragments = []
-    last_line_index = -1
+    last_line_index = 0
     N = len(image)
-    is_line = False
+    is_line = True
     for i in range(0, N):
         p = abs(image[i])
-        if not is_line and p < threshold:
+        if is_line and p < threshold:
+            fragments.append(Fragment(last_line_index, i+2))
+            is_line = False
+        if not is_line and p > threshold:
             is_line = True
             last_line_index = i
-        if is_line and p > threshold:
-            is_line = False
-            fragments.append(Fragment(last_line_index, i+1))
 
     if is_line:
         fragments.append(Fragment(last_line_index, N))
 
     fragments.sort(key=lambda x: x.length, reverse=True)
-    logging.debug(f"Fragments = {fragments}. Longest fragment = {fragments[0]}")
+    # logging.info(f"Fragments = {fragments}. Longest fragment = {fragments[0]}")
     return fragments[0]
 
 
-def get_crossings(image, threshold):
+def get_crossings_of_line_segment(image):
+    e2e_diff = image[-1] - image[0]
+    if e2e_diff < 0:
+        c = get_crossings_of_line_segment([p for p in reversed(image)])
+        M = len(c)
+        return c #[M - p for p in c]
+
+    N = len(image)
+    image = normalize(image)
     c = []
+    last_threshold_index = 0
 
-    s = "above" if image[0] > threshold else "under"
-    i = 0
-    for p in image:
-        if s == "under" and p > threshold:
+    thresholds = np.arange(0, 1, 1/N)
+    M = len(thresholds)
+    for i in range(0, N):
+        p = image[i]
+        while last_threshold_index < M and p > thresholds[last_threshold_index]:
             c.append(i)
-            s = "above"
-        elif s == "above" and p < threshold:
-            c.append(i)
-            s = "under"
-
-        i += 1
+            last_threshold_index += 1
     return c
 
 
@@ -89,36 +102,36 @@ class PointAlgo:
         self.percent = p
 
 
-class RevisitedLineFitter:
-    def __init__(self, wheel, sensor):
-        self.R_um = wheel.radius_mm * 1000
-        self.d_um = wheel.d_um
-        self.delta_rad = np.pi * wheel.dphi_deg / 180.0
-        self.px_um = sensor.dx
-
-    def get_crossings(self, image):
-        image = normalize(image)
-        c = []
-
-
-        k = np.arange(0.1, 1, (1.0/max_crossings))
-        for t in k:
-            raw_c = get_crossings(image, t)
-            c += raw_c
-
-        logger.info(f"Len c = {len(c)}")
-        return c
-
-    def get_beta_and_height(self, image):
-        image = normalize(image)
-        c = []
-        k = np.arange(0.1, 1, (1.0/max_crossings))
-        for t in k:
-            raw_c = get_crossings(image, t)
-            c += raw_c
-
-        logger.info(f"Len c = {len(c)}")
-        return c
+# class RevisitedLineFitter:
+#     def __init__(self, wheel, sensor):
+#         self.R_um = wheel.radius_mm * 1000
+#         self.d_um = wheel.d_um
+#         self.delta_rad = np.pi * wheel.dphi_deg / 180.0
+#         self.px_um = sensor.dx
+#
+#     def get_crossings(self, image):
+#         image = normalize(image)
+#         c = []
+#
+#
+#         k = np.arange(0.1, 1, (1.0/max_crossings))
+#         for t in k:
+#             raw_c = get_crossings(image, t)
+#             c += raw_c
+#
+#         logger.info(f"Len c = {len(c)}")
+#         return c
+#
+#     def get_beta_and_height(self, image):
+#         image = normalize(image)
+#         c = []
+#         k = np.arange(0.1, 1, (1.0/max_crossings))
+#         for t in k:
+#             raw_c = get_crossings(image, t)
+#             c += raw_c
+#
+#         logger.info(f"Len c = {len(c)}")
+#         return c
 
 
 if __name__ == "__main__":
@@ -146,53 +159,93 @@ if __name__ == "__main__":
 
     arcsek = 0.1/360  # 1/3600 of one degree
     begin_angle = 100
-    angles = np.arange(begin_angle, begin_angle + 1, 5000)*arcsek
 
     readout_generator = ReadoutGenerator(sensor, wheel, sensor_tilt_deg=1.4, sensor_shift_um=(3, -765))
-    fitter = RevisitedLineFitter(wheel, sensor)
+    # fitter = RevisitedLineFitter(wheel, sensor)
 
     useful_begin = 15
-    useful_end = 112
+    # useful_end = 112
+
+    last_crossings = np.zeros(128)
+
+    register_r = []
+    register_ab = []
+    register_c = []
+    register_f = []
+
+
 
     index = 0
+    angles = np.arange(begin_angle, begin_angle + 100, 1)*arcsek
     for a in angles:
         raw = readout_generator.for_angle(a)
-        useful_raw = raw[useful_begin:useful_end]
+        # raw = [ 0.0, 2.41706, 6.04265, 8.45971, 10.8768, 41.09, 170.403, 240.498, 255.0, 134.147, 53.1753, 42.2986, 39.8815, 38.673, 39.8815, 41.09, 41.09, 41.09, 39.8815, 39.8815, 39.8815, 39.8815, 41.09, 41.09, 42.2986, 42.2986, 43.5071, 47.1327, 45.9241, 44.7156, 49.5497, 55.5924, 56.8009, 54.3839, 64.0521, 74.9289, 73.7203, 78.5545, 89.4312, 101.517, 96.6824, 97.891, 113.602, 126.896, 122.062, 125.687, 138.981, 134.147, 145.024, 154.692, 161.943, 166.777, 155.9, 165.569, 180.071, 167.986, 172.82, 182.488, 187.322, 190.948, 189.739, 189.739, 188.531, 184.905, 180.071, 188.531, 201.825, 201.825, 171.611, 184.905, 182.488, 189.739, 196.99, 167.986, 166.777, 174.028, 174.028, 163.152, 152.275, 152.275, 143.815, 136.564, 130.521, 128.104, 113.602, 111.185, 102.725, 99.0995, 87.0142, 78.5545, 76.1374, 68.8862, 61.635, 65.2606, 64.0521, 61.635, 60.4265, 56.8009, 54.3839, 54.3839, 54.3839, 55.5924, 55.5924, 55.5924, 56.8009, 56.8009, 55.5924, 55.5924, 55.5924, 56.8009, 56.8009, 60.4265, 61.635, 64.0521, 65.2606, 65.2606, 66.4692, 64.0521, 65.2606, 72.5118, 83.3886, 84.5971, 88.2227, 96.6824, 108.768, 138.981, 143.815, 132.938 ]
+        useful_raw = raw[useful_begin:]
+        register_r.append(useful_raw)
         logger.info(f"Index = {index}. Angle = {a}")
-        crossings = fitter.get_crossings(useful_raw)
-        logger.info(f"Len crossings = {len(crossings)}")
+        fragment = get_longest_line_fragment(useful_raw)
+        logger.info(f"Fragment = {fragment}")
+        bbb = fragment.begin
+        eee = fragment.end
+        x = range(bbb, eee)
+        y = useful_raw[bbb:eee]
+        linef = np.polyfit(x, y, 1)
+        register_ab.append(linef)
 
-
-        # diffs = [(current - last, t) for (current, last, t) in zip(crossings, last_crossings, thresholds)]
-        # last_crossings = crossings
-        # logger.info(f"Len diffs = {len(diffs)}")
-        # well_behaved = np.array([(k, t) for (k, t) in diffs if abs(k) < c_threshold])
-        # logger.info(f"Len well behaved = {len(well_behaved)}")
-        # #betas[index, 0:len(well_behaved)] = well_behaved
-        # if well_behaved.any() and index > 0:
-        #     # print(f"Well behaved = {well_behaved}")
-        #     ccccc, ttttt = zip(*well_behaved)
-        #     def fffff(k):
-        #         return 20*(1.0 - k)
-        #     ttttt = np.array(ttttt)
-        #     last_angle += np.average(ccccc)
-        #     compare_angle += np.average(ccccc, weights=fffff(ttttt))
-        # mean_cs[index] = last_angle
-        # mean_cs_comp[index] = compare_angle
-        # index += 1
+        index += 1
 
     plotter = Plotter()
-    angles = [int(3600*a) for a in angles]
+    A = 0.05
+    B = 6159
+    plotter.plot_simple([ A*(b - B) for (a, b) in register_ab]) #[90.0*(b - 1.8829)
+    angles = [int(3600*a) - begin_angle for a in angles]
+    plotter.plot_simple(angles)
+
+    def plot_fragment(index):
+        r = register_f[index]
+        y = register_r[index]
+        x = range(r.begin, r.end)
+        plotter.get_axes().plot(x, y[r.begin: r.end])
+
+
+
+    # x = range(r.begin, r.end)
+    # plotter.plot_simple(register_f[0])
+    # plotter.plot_simple(register_f[1])
+    # plotter.plot_simple(register_c[3])
+    # plotter.plot_simple(register_c[4])
+    # plotter.plot_simple(register_c[5])
+    # plotter.plot_simple(register_c[6])
+    plotter.show_plot()
 
     original_raw = useful_raw
+
+    # to consider:
+    # register_f.append(fragment)
+    #
+    # before_measure = gauss_4(useful_raw[bbb:eee])[4:-4]
+    #
+    # crossings = get_crossings_of_line_segment(before_measure)
+    # crossings = [p + bbb for p in crossings]
+    # register_c.append(crossings)
+    # diff_c = [new_c - old_c for (new_c, old_c) in zip(crossings, last_crossings)]
+    # logger.info(f"AVERAGE diff = {np.average(diff_c)}")
+    # last_crossings = crossings
+
 
     fragment = get_longest_line_fragment(original_raw)
     bbb = fragment.begin
     eee = fragment.end
 
     plotter.plot_simple(original_raw)
-    plotter.get_axes().plot(range(bbb, eee), original_raw[bbb:eee])
-    plotter.show_plot()
+    plotter.plot_simple(original_raw)
+
+    # line_to_measure = normalize(before_measure)
+    # crossings = get_crossings_of_line_segment(line_to_measure)
+
+
+    # plotter.plot_simple(30*normalize(before_measure))
+    # plotter.get_axes().plot(range(4, -4), before_measure)
 
 
 

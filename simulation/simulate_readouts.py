@@ -104,7 +104,7 @@ class ReadoutGenerator:
         for i in range(0, self.sensor.N):
             segment = sensor_segments[i]
             for strip in rotated_strips:
-                readout[i] -= segment.intersection(strip).area #(1.03-0.06*np.random.rand()) # stripes are black so we subtract light when they are
+                readout[i] -= segment.intersection(strip).area * (1.06-0.12*np.random.rand()) # stripes are black so we subtract light when they are
 
         return readout
 
