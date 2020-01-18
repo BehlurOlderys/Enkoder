@@ -18,6 +18,7 @@ grubosc_paska_mm = 0.128
 N_paskow = 3600
 obwod_mm = grubosc_paska_mm*N_paskow
 R_mm = obwod_mm / (2*np.pi)
+R_um = 1000*R_mm
 
 # necessary to disable np debug nonsense:
 logging.getLogger("matplotlib").propagate = False
@@ -75,7 +76,7 @@ def get_crossings_of_line_segment(image):
     if e2e_diff < 0:
         c = get_crossings_of_line_segment([p for p in reversed(image)])
         M = len(c)
-        return c #[M - p for p in c]
+        return [M - p for p in c]
 
     N = len(image)
     image = normalize(image)
@@ -172,24 +173,148 @@ if __name__ == "__main__":
     register_ab = []
     register_c = []
     register_f = []
+    register_fi = []
+    register_L = []
 
 
 
+    actual_estimate_fi = None
+    last_fi = 0
+    last_dfi = 0
+
+    last_c = None
     index = 0
-    angles = np.arange(begin_angle, begin_angle + 100, 1)*arcsek
+
+
+    def get_one_width(image, threshold):
+        rising = True if image[0] < threshold else False
+        map_of_crossings = {}
+        larger = False
+        for i in range(0, len(image)):
+            p = image[i]
+            if rising and p > threshold:
+                map_of_crossings[rising] = i
+                larger = rising
+                rising = False
+            if not rising and p < (1.0 - threshold):
+                map_of_crossings[rising] = i
+                larger = rising
+                rising = True
+
+        if True in map_of_crossings and False in map_of_crossings:
+            return map_of_crossings[larger] - map_of_crossings[not larger]
+        return 0
+
+    def get_width_of_stripe_in_pixels(raw, sane_estimate):
+        threshold_of_sanity = 0.8
+        image = normalize(raw)
+        thresholds = np.arange(0, 1, 0.1)
+        samples = [get_one_width(image, p) for p in thresholds]
+        def is_sane(x):
+            return abs(x - sane_estimate) < threshold_of_sanity*sane_estimate
+        useful_samples = np.array([p for p in samples if is_sane(p)])
+        return np.median(useful_samples)
+
+
+    angles = np.arange(begin_angle, begin_angle + 1080, 50)*arcsek
     for a in angles:
         raw = readout_generator.for_angle(a)
-        # raw = [ 0.0, 2.41706, 6.04265, 8.45971, 10.8768, 41.09, 170.403, 240.498, 255.0, 134.147, 53.1753, 42.2986, 39.8815, 38.673, 39.8815, 41.09, 41.09, 41.09, 39.8815, 39.8815, 39.8815, 39.8815, 41.09, 41.09, 42.2986, 42.2986, 43.5071, 47.1327, 45.9241, 44.7156, 49.5497, 55.5924, 56.8009, 54.3839, 64.0521, 74.9289, 73.7203, 78.5545, 89.4312, 101.517, 96.6824, 97.891, 113.602, 126.896, 122.062, 125.687, 138.981, 134.147, 145.024, 154.692, 161.943, 166.777, 155.9, 165.569, 180.071, 167.986, 172.82, 182.488, 187.322, 190.948, 189.739, 189.739, 188.531, 184.905, 180.071, 188.531, 201.825, 201.825, 171.611, 184.905, 182.488, 189.739, 196.99, 167.986, 166.777, 174.028, 174.028, 163.152, 152.275, 152.275, 143.815, 136.564, 130.521, 128.104, 113.602, 111.185, 102.725, 99.0995, 87.0142, 78.5545, 76.1374, 68.8862, 61.635, 65.2606, 64.0521, 61.635, 60.4265, 56.8009, 54.3839, 54.3839, 54.3839, 55.5924, 55.5924, 55.5924, 56.8009, 56.8009, 55.5924, 55.5924, 55.5924, 56.8009, 56.8009, 60.4265, 61.635, 64.0521, 65.2606, 65.2606, 66.4692, 64.0521, 65.2606, 72.5118, 83.3886, 84.5971, 88.2227, 96.6824, 108.768, 138.981, 143.815, 132.938 ]
+        #raw = [ 0.0, 2.41706, 6.04265, 8.45971, 10.8768, 41.09, 170.403, 240.498, 255.0, 134.147, 53.1753, 42.2986, 39.8815, 38.673, 39.8815, 41.09, 41.09, 41.09, 39.8815, 39.8815, 39.8815, 39.8815, 41.09, 41.09, 42.2986, 42.2986, 43.5071, 47.1327, 45.9241, 44.7156, 49.5497, 55.5924, 56.8009, 54.3839, 64.0521, 74.9289, 73.7203, 78.5545, 89.4312, 101.517, 96.6824, 97.891, 113.602, 126.896, 122.062, 125.687, 138.981, 134.147, 145.024, 154.692, 161.943, 166.777, 155.9, 165.569, 180.071, 167.986, 172.82, 182.488, 187.322, 190.948, 189.739, 189.739, 188.531, 184.905, 180.071, 188.531, 201.825, 201.825, 171.611, 184.905, 182.488, 189.739, 196.99, 167.986, 166.777, 174.028, 174.028, 163.152, 152.275, 152.275, 143.815, 136.564, 130.521, 128.104, 113.602, 111.185, 102.725, 99.0995, 87.0142, 78.5545, 76.1374, 68.8862, 61.635, 65.2606, 64.0521, 61.635, 60.4265, 56.8009, 54.3839, 54.3839, 54.3839, 55.5924, 55.5924, 55.5924, 56.8009, 56.8009, 55.5924, 55.5924, 55.5924, 56.8009, 56.8009, 60.4265, 61.635, 64.0521, 65.2606, 65.2606, 66.4692, 64.0521, 65.2606, 72.5118, 83.3886, 84.5971, 88.2227, 96.6824, 108.768, 138.981, 143.815, 132.938 ]
         useful_raw = raw[useful_begin:]
         register_r.append(useful_raw)
         logger.info(f"Index = {index}. Angle = {a}")
         fragment = get_longest_line_fragment(useful_raw)
-        logger.info(f"Fragment = {fragment}")
+        # logger.info(f"Fragment = {fragment}")
+
         bbb = fragment.begin
         eee = fragment.end
         x = range(bbb, eee)
         y = useful_raw[bbb:eee]
+
+
+        # plotter = Plotter()
+        # plotter.plot_simple(useful_raw)
+        # plotter.get_axes().plot(x, y)
+        # plotter.show_plot()
+
         linef = np.polyfit(x, y, 1)
+        a, b = linef
+        c = -b/a
+
+        L = len(y)
+        Lt = int(L/4)
+        # crossings are pixel indices for which image is above certain thresholds
+        c2 = bbb+np.average(get_crossings_of_line_segment(y)[Lt: -Lt])
+
+
+        register_c.append(c)
+
+        # ax + b = y <- "stok"
+        # przeciecie stoku z zerem jest liczone w pikselach
+        # 0 = ax + b -> -b/a = x
+        # piksele na arcsek?
+
+
+        # dlugosc fragmentu = np. 40
+        # ta dlugosc to ok. 64um
+        # 40*63.5 ~~ 64um
+
+        # dx = dfi * R
+        # dfi = dx/R (rad)
+        #
+        # fi(arcsek) = 3600*180*fi/pi = 3600 * 180 * dx / (pi * R)
+
+
+        # Real_R = R_um - eee*63.5 #-20000
+        # fi = 1296000 * c / (2 * np.pi * Real_R)
+
+
+
+        dy_inaccurate_but_sane = fragment.length
+        dy = get_width_of_stripe_in_pixels(useful_raw[:97], dy_inaccurate_but_sane)
+        used = "calculated"
+        threshold_of_sanity = 0.8
+        if (abs(dy - dy_inaccurate_but_sane) > threshold_of_sanity*dy_inaccurate_but_sane):
+            dy = dy_inaccurate_but_sane
+            used = "sane"
+
+        logger.info(f"DY calculated = {dy}, DY working nice = {fragment.length+5}, used = {used}")
+
+        aaa = 64.0 / dy
+        if last_c is None:
+            c_diff = 0
+        else:
+            c_diff = c - last_c
+
+        last_c = c
+
+        dx = c_diff * aaa
+        R_real = R_um
+        dfi = 1296000 * dx / (2.0 * np.pi * R_real)
+        logger.info(f"c = {c}[px], c_diff={c_diff}[px], aaa={aaa}[um/px], dx = {dx}[um], dfi = {dfi}[arcsek]")
+        register_fi.append(dfi)
+
+        if actual_estimate_fi is None:
+            actual_estimate_fi = 0
+            register_f.append(0)
+        else:
+            actual_estimate_fi += (dfi if abs(dfi) < 100 else last_dfi)
+            register_f.append(actual_estimate_fi)
+
+        last_dfi = dfi
+
+        # dx = c - last_c
+        # last_c = c
+        # Real_R = R_um + c*63.5
+        # dfi = 3600 * 180 * dx / (np.pi * Real_R)
+        # if not first_fi:
+        #     first_fi = dfi
+        #     register_f.append(0)
+        # else:
+        #     last_fi += dfi
+        #     register_f.append(last_fi)
+
+
         register_ab.append(linef)
 
         index += 1
@@ -197,9 +322,14 @@ if __name__ == "__main__":
     plotter = Plotter()
     A = 0.05
     B = 6159
-    plotter.plot_simple([ A*(b - B) for (a, b) in register_ab]) #[90.0*(b - 1.8829)
+    # plotter.plot_simple(register_fi) #[90.0*(b - 1.8829)
+    plotter.plot_simple(register_f) #[90.0*(b - 1.8829)
+    # pyplot.hist(register_fi)
+    # plotter.plot_simple(register_c) #[90.0*(b - 1.8829)
     angles = [int(3600*a) - begin_angle for a in angles]
     plotter.plot_simple(angles)
+    # plotter.plot_simple([a - b for (a, b) in zip(angles, register_f)])
+    # plotter.plot_simple([a/b if b is not 0 else 0 for a, b in zip(angles, register_f)])
 
     def plot_fragment(index):
         r = register_f[index]
@@ -207,120 +337,17 @@ if __name__ == "__main__":
         x = range(r.begin, r.end)
         plotter.get_axes().plot(x, y[r.begin: r.end])
 
-
-
-    # x = range(r.begin, r.end)
-    # plotter.plot_simple(register_f[0])
-    # plotter.plot_simple(register_f[1])
-    # plotter.plot_simple(register_c[3])
-    # plotter.plot_simple(register_c[4])
-    # plotter.plot_simple(register_c[5])
-    # plotter.plot_simple(register_c[6])
     plotter.show_plot()
 
     original_raw = useful_raw
-
-    # to consider:
-    # register_f.append(fragment)
-    #
-    # before_measure = gauss_4(useful_raw[bbb:eee])[4:-4]
-    #
-    # crossings = get_crossings_of_line_segment(before_measure)
-    # crossings = [p + bbb for p in crossings]
-    # register_c.append(crossings)
-    # diff_c = [new_c - old_c for (new_c, old_c) in zip(crossings, last_crossings)]
-    # logger.info(f"AVERAGE diff = {np.average(diff_c)}")
-    # last_crossings = crossings
-
 
     fragment = get_longest_line_fragment(original_raw)
     bbb = fragment.begin
     eee = fragment.end
 
     plotter.plot_simple(original_raw)
-    plotter.plot_simple(original_raw)
 
     # line_to_measure = normalize(before_measure)
     # crossings = get_crossings_of_line_segment(line_to_measure)
 
 
-    # plotter.plot_simple(30*normalize(before_measure))
-    # plotter.get_axes().plot(range(4, -4), before_measure)
-
-
-
-
-
-
-    # for k in range(0, max_readings):
-    #    plotter.get_axes().plot(angles, betas[:, k])
-
-    # plotter.get_axes().plot(angles, betas)
-    # plotter.get_axes().plot(angles, hhhs)
-    # plotter.get_axes().plot(angles, ttts)
-    # plotter.get_axes().plot(angles, kkks)
-    # plotter.show_plot()
-    # plotter.reset()
-    # plotter.plot_simple(normalize(raw_init))
-    # plotter.plot_simple(normalize(raws[0]))
-    # plotter.plot_simple(normalize(raws[1]))
-    # plotter.plot_simple(normalize(raws[2]))
-    # plotter.plot_simple(normalize(raws[3]))
-    # plotter.plot_simple(normalize(raws[4]))
-    # plotter.plot_simple(normalize(raws[5]))
-    # plotter.plot_simple(normalize(raws[6]))
-    # plotter.plot_simple(normalize(raws[7]))
-    # plotter.plot_simple(normalize(raws[14]))
-    # plotter.plot_simple(normalize(raws[15]))
-    # plotter.plot_simple(normalize(raws[16]))
-    # plotter.plot_simple(normalize(raws[17]))
-    # plotter.plot_simple(normalize(raws[18]))
-    # plotter.plot_simple(normalize(raws[19]))
-    # plotter.plot_simple(normalize(raws[20]))
-    # plotter.plot_simple(normalize(raws[21]))
-    # plotter.plot_simple(raws[30])
-    # plotter.plot_simple(raws[31])
-    # plotter.plot_simple(raws[32])
-    # plotter.plot_simple(raws[33])
-    # plotter.plot_simple(raws[34])
-    # plotter.plot_simple(raws[35])
-    # plotter.plot_simple(raws[36])
-    # plotter.plot_simple(raws[37])
-    # N = 128
-    # plotter.get_axes().plot(range(0, N), 0.25*np.ones(N))
-    # plotter.get_axes().plot(range(0, N), 0.5*np.ones(N))
-    # plotter.get_axes().plot(range(0, N), 0.75*np.ones(N))
-
-    # plotter.plot_simple(np.correlate(raw_init, raws[1], "same"))
-    # plotter.plot_simple(np.correlate(raw_init, raws[2], "same"))
-    # plotter.get_axes().plot(angles, [h for (h, g) in hhhs])
-    # plotter.get_axes().plot(angles, [g for (h, g) in hhhs])
-    # plotter.get_axes().plot(angles, [180*b/np.pi for b in betas])
-    # plotter.save_plot()
-    # plotter.show_plot()
-    # plotter.plot_simple(p_angles)
-    # N = len(raw_stack)
-    # crossings, coefficients, hills = fitter.fit_line(raw_stack)
-    #
-    #
-    # crossings.pop(0)
-    # hills.pop(0)
-    #
-    # init = crossings[0] + 1
-    #
-    # logger.info(f"Acquired {len(crossings)} crossings: {crossings}")
-    # logger.info(f"Acquired {len(coefficients)} lines: {coefficients}")
-    # logger.info(f"Acquired {len(hills)} hills: {hills}")
-    #
-    # for h in hills:
-    #     r = [i for i in range(init, init + len(h))]
-    #     print(len(h))
-    #     plotter.get_axes().plot(r, h)
-    #     init += len(h)
-    #
-    # for cross, coef in zip(crossings, coefficients):
-    #     logger.debug(f"Crossing = {cross}")
-    #     t = range(cross-10, cross+10)
-    #     fit_y = [coef["a"] * x + coef["b"] for x in t]
-    #     plotter.get_axes().plot(t, fit_y, color="green")
-    #
