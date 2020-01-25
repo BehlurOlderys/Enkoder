@@ -239,7 +239,7 @@ if __name__ == "__main__":
     grubosc_czarnego_um = grubosc_paska_mm*1000*0.5
     odleglosc_dolnego_paska = 6*grubosc_czarnego_um
     grubosc_dolnego_paska = 3*grubosc_czarnego_um
-    wheel = Enc(R_mm, N_paskow, 6.4, odleglosc_dolnego_paska) #, grubosc_dolnego_paska)
+    wheel = EncoderWheelWithTopAndBottomStrips(R_mm, N_paskow, 6.4, odleglosc_dolnego_paska) #, grubosc_dolnego_paska)
 
     arcsek = 0.1/360  # 1/3600 of one degree
     begin_angle = 100

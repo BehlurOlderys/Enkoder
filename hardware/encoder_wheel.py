@@ -30,7 +30,7 @@ class EncoderWheel:
 
     def _create_strips_polygons(self, angle_deg):
         ss = []
-        margin = 10
+        margin = 80
 
         strip = Polygon([
             (-self.d_um/2, self.strip_min_y_um),
