@@ -37,6 +37,40 @@ logger = logging.getLogger(__name__)
 history_period_arcsek = 1296000.0 / N_paskow
 
 
+def get_one_width(image, threshold):
+    rising = True if image[0] < threshold else False
+    map_of_crossings = {}
+    larger = False
+    for i in range(0, len(image)):
+        p = image[i]
+        if rising and p > threshold:
+            map_of_crossings[rising] = i
+            larger = rising
+            rising = False
+        if not rising and p < (1.0 - threshold):
+            map_of_crossings[rising] = i
+            larger = rising
+            rising = True
+
+    if True in map_of_crossings and False in map_of_crossings:
+        return map_of_crossings[larger] - map_of_crossings[not larger]
+    return 0
+
+
+def get_width_of_stripe_in_pixels(raw, sane_estimate):
+    threshold_of_sanity = 0.8
+    image = normalize(raw)
+    thresholds = np.arange(0, 1, 0.1)
+    samples = [get_one_width(image, p) for p in thresholds]
+
+    def is_sane(x):
+        return abs(x - sane_estimate) < threshold_of_sanity * sane_estimate
+
+    useful_samples = np.array([p for p in samples if is_sane(p)])
+    return np.median(useful_samples) if useful_samples.any() else 0
+
+
+
 class HistoricalCrossing:
     def __init__(self, value, direction, phi_arcsek):
         self.value = value
@@ -57,9 +91,14 @@ class HistoricalCrossing:
     def is_ready(self):
         return self.ready
 
-    def is_ok_for_update(self, current_phi_arcsek, current_dir):
+    def is_old_enough(self, current_fi_as):
+        if self.phi_arcsek is None:
+            return False
         predicted = self.phi_arcsek + history_period_arcsek
-        return (current_dir == self.direction) and abs(predicted - current_phi_arcsek) < history_period_arcsek*0.2
+        return abs(predicted - current_fi_as) < history_period_arcsek*0.2
+
+    def is_ok_for_update(self, current_fi_as, current_dir):
+        return (not (current_dir == self.direction)) and self.is_old_enough(current_fi_as)
 
     def __repr__(self):
         phi_to_repr = self.phi_arcsek if self.phi_arcsek is not None else "NONE"
@@ -78,6 +117,8 @@ class ImageGetter:
         if self.normalized is None:
             self.normalized = normalize(self.image)
         return self.normalized
+
+
 
 
 class CrudestEstimator:
@@ -102,22 +143,31 @@ class CrudestEstimator:
         v = image[self.control_pixel_index]
         direction = v > threshold_first
         if self.history is None:
-            self.history = HistoricalCrossing(v, direction, None)
-            self.history.ready = True
-        else:
-            if not self.history.direction == direction:
-                logger.info("-----------direction changed!")
-                if not self.history.is_ready():
-                    self.history.set_ready()
-                    self.history.change_direction()
-                else:
-                    previous = self.history.phi_arcsek
-                    if previous is None:
-                        self.history = HistoricalCrossing(v, direction, 0)
-                        return 0
-                    new_phi = previous + pasek_as
-                    self.history = HistoricalCrossing(v, direction, new_phi)
-                    return new_phi
+            self.history = HistoricalCrossing(v, direction, 0)
+            return 0
+
+        if self.history.is_ok_for_update(fi_as, direction):
+            logger.info(f"----------- update!")
+            previous = self.history.phi_arcsek
+            new_phi = previous + pasek_as
+            self.history = HistoricalCrossing(v, not direction, new_phi)
+            return new_phi
+        #
+        #
+        #
+        # else:
+        #     if not self.history.direction == direction:
+        #         logger.info("-----------direction changed!")
+        #         if not self.history.is_ready():
+        #             self.history.set_ready()
+        #             self.history.change_direction()
+        #         else:
+        #             if previous is None:
+        #                 self.history = HistoricalCrossing(v, direction, 0)
+        #                 return 0
+        #             new_phi = previous + pasek_as
+        #             self.history = HistoricalCrossing(v, direction, new_phi)
+        #             return new_phi
 
         return fi_as
 
@@ -193,6 +243,41 @@ def calculate_dfi_as(width_of_stripe_px, pixel_difference_from_last_reading):
     return dfi_as
 
 
+class SimplestEstimator:
+    def __init__(self):
+        self.last_difference = {}
+        self.last_index = {}
+
+    def def_get_first_above(self, image, threshold=0.5):
+        starting_dir = image[0] < threshold
+        for i in range(0, len(image)):
+            direction = image[i] < threshold
+            if direction is not starting_dir:
+                return i
+
+    def get_dx_px(self, raw, percents=50):
+        image = normalize(raw)
+        current_index = self.def_get_first_above(image, percents/100.0)
+        if percents not in self.last_index:
+            self.last_index[percents] = current_index
+            self.last_difference[percents] = 0
+            return 0, None
+
+        else:
+            safe_threshold_px_negative = -5
+            difference_px = current_index - self.last_index[percents]
+            if difference_px > 0:
+                self.last_index[percents] = current_index
+                self.last_difference[percents] = difference_px
+                return difference_px, current_index
+            elif difference_px < safe_threshold_px_negative:
+                temp_last_index = self.last_index[percents]
+                self.last_index[percents] = current_index
+                return self.last_difference[percents], temp_last_index
+            else:
+                return 0, None
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("-c", "--config_for_sensors", default=get_default_sensors_config())
@@ -213,16 +298,18 @@ if __name__ == "__main__":
     wheel = EncoderWheelWithTopAndBottomStrips(R_mm, N_paskow, 10, odleglosc_dolnego_paska) #, grubosc_dolnego_paska)
 
     # Main loop:
-    begin_angle_as = 180
+    begin_angle_as = 0
     actual_estimate_fi_as = None  # as is short for arcsecond, obviously
     last_dfi_as = 0
     index = 0
-    angles_deg = np.arange(begin_angle_as, begin_angle_as + 180, 5)*arcsek_in_deg
+    angles_deg = np.arange(begin_angle_as, begin_angle_as + 360, 1)*arcsek_in_deg
     register_fi = []
 
     readout_generator = ReadoutGenerator(sensor, wheel, sensor_tilt_deg=1.4, sensor_shift_um=(0, -765))
     crudest_estimator = CrudestEstimator()
     finer_estimator = FinerEstimator()
+    simplest_estimator = SimplestEstimator()
+
     for angle_deg in angles_deg:
         raw = readout_generator.for_angle(angle_deg)
         #raw = [ 0.0, 5.39682, 12.1429, 21.5873, 32.3809, 37.7778, 41.8254, 47.2222, 52.619, 163.254, 248.254, 255.0, 215.873, 147.063, 111.984, 110.635, 125.476, 117.381, 125.476, 129.524, 130.873, 138.968, 145.714, 149.762, 151.111, 151.111, 155.159, 155.159, 168.651, 175.397, 170.0, 170.0, 178.095, 183.492, 184.841, 190.238, 190.238, 203.73, 201.032, 210.476, 203.73, 219.921, 226.667, 226.667, 236.111, 238.809, 241.508, 245.555, 241.508, 241.508, 246.905, 226.667, 228.016, 233.413, 225.317, 240.159, 238.809, 240.159, 241.508, 249.603, 238.809, 223.968, 242.857, 252.302, 248.254, 245.555, 238.809, 238.809, 222.619, 219.921, 222.619, 222.619, 213.174, 211.825, 203.73, 198.333, 201.032, 201.032, 194.286, 196.984, 190.238, 184.841, 187.54, 186.19, 176.746, 174.048, 168.651, 170.0, 167.302, 167.302, 167.302, 161.905, 160.555, 149.762, 148.413, 149.762, 144.365, 137.619, 143.016, 134.921, 137.619, 133.571, 126.825, 120.079, 116.032, 114.682, 116.032, 114.682, 114.682, 114.682, 113.333, 113.333, 113.333, 114.682, 113.333, 113.333, 114.682, 114.682, 114.682, 114.682, 114.682, 114.682, 114.682, 116.032, 116.032, 136.27, 174.048, 179.444 ]
@@ -230,11 +317,32 @@ if __name__ == "__main__":
         useful_raw = raw[useful_begin:]
 
         # plotter = Plotter()
-        # plotter.plot_simple(normalize(useful_raw))
+        # plotter.plot_simple(useful_raw)
         # plotter.show_plot()
 
-        pixel_difference_from_last_reading = finer_estimator.get_dx_px(useful_raw)
+        # pixel_difference_from_last_reading = finer_estimator.get_dx_px(useful_raw)
+        dx_values = []
+        for i in range(1, 10):
+            i_threshold = 10*i
+            dx_value, dx_index = simplest_estimator.get_dx_px(useful_raw, i_threshold)
+            dx_values.append(dx_value)
+
+        logger.info(f"Values = {dx_values}")
+        pixel_difference_from_last_reading = np.mean([d for d in dx_values if d < 32])
+        # pixel_difference_from_last_reading, dx_index = simplest_estimator.get_dx_px(useful_raw, 50)
         width_of_stripe_px = 45  # TODO
+
+        #############
+        dy_inaccurate_but_sane = 45
+        dy = get_width_of_stripe_in_pixels(useful_raw, dy_inaccurate_but_sane)
+        threshold_of_sanity = 0.8
+        if (abs(dy - dy_inaccurate_but_sane) > threshold_of_sanity * dy_inaccurate_but_sane):
+            dy = dy_inaccurate_but_sane
+        ##########
+        # width_of_stripe_px = dy
+
+        # logger.info(f"DY calculated = {dy}, DY working nice = {fragment.length+5}, used = {used}")
+
 
         # To first approximation this should not change much:
         dfi_as = calculate_dfi_as(width_of_stripe_px, pixel_difference_from_last_reading)

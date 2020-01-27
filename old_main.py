@@ -268,37 +268,7 @@ if __name__ == "__main__":
     last_c = None
     index = 0
 
-
-    def get_one_width(image, threshold):
-        rising = True if image[0] < threshold else False
-        map_of_crossings = {}
-        larger = False
-        for i in range(0, len(image)):
-            p = image[i]
-            if rising and p > threshold:
-                map_of_crossings[rising] = i
-                larger = rising
-                rising = False
-            if not rising and p < (1.0 - threshold):
-                map_of_crossings[rising] = i
-                larger = rising
-                rising = True
-
-        if True in map_of_crossings and False in map_of_crossings:
-            return map_of_crossings[larger] - map_of_crossings[not larger]
-        return 0
-
-    def get_width_of_stripe_in_pixels(raw, sane_estimate):
-        threshold_of_sanity = 0.8
-        image = normalize(raw)
-        thresholds = np.arange(0, 1, 0.1)
-        samples = [get_one_width(image, p) for p in thresholds]
-        def is_sane(x):
-            return abs(x - sane_estimate) < threshold_of_sanity*sane_estimate
-        useful_samples = np.array([p for p in samples if is_sane(p)])
-        return np.median(useful_samples) if useful_samples.any() else 0
-
-
+z
     c3 = 0
     last_image = None
     correlator = Correlator()
