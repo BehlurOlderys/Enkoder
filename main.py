@@ -15,7 +15,8 @@ import logging
 from config.config_utils import get_default_sensors_config
 
 useful_begin = 15
-arcsek_in_deg = 0.1/360  # 1/3600 of one degree
+constant_as_to_deg = 0.1/360  # 1/3600 of one degree
+constant_deg_to_as = 3600
 sensitivity_threshold_as = 100
 grubosc_paska_mm = 0.128
 N_paskow = 3600
@@ -237,8 +238,8 @@ def calculate_dfi_as(width_of_stripe_px, pixel_difference_from_last_reading):
     if width_of_stripe_px == 0 or R_um == 0:
         return 0
 
-    pixel_to_xaxis_um_coefficient = float(stripe_width_um) / width_of_stripe_px
-    dx_um = pixel_difference_from_last_reading * pixel_to_xaxis_um_coefficient
+    pixel_to_xaxis_um_coefficient = float(stripe_width_um) / float(width_of_stripe_px)
+    dx_um = float(pixel_difference_from_last_reading) * pixel_to_xaxis_um_coefficient
     dfi_as = constant_um_to_as * dx_um
     return dfi_as
 
@@ -247,33 +248,54 @@ class SimplestEstimator:
     def __init__(self):
         self.last_difference = {}
         self.last_index = {}
+        self.gaussed = None
 
-    def def_get_first_above(self, image, threshold=0.5):
+    def get_first_above(self, image, threshold=0.5):
         starting_dir = image[0] < threshold
         for i in range(0, len(image)):
             direction = image[i] < threshold
             if direction is not starting_dir:
                 return i
 
-    def get_dx_px(self, raw, percents=50):
-        image = normalize(raw)
-        current_index = self.def_get_first_above(image, percents/100.0)
-        if percents not in self.last_index:
-            self.last_index[percents] = current_index
-            self.last_difference[percents] = 0
-            return 0, None
+    def get_first_under(self, image, threshold):
+        starting_dir = image[0] > threshold
+        for i in range(0, len(image)):
+            direction = image[i] > threshold
+            if direction is not starting_dir:
+                return i
 
+    def get_dx_px(self, raw, percents=50, low=False):
+        image = gauss_6(raw)[6:-6]
+        image = normalize(image)
+
+
+        # plotter = Plotter()
+        # plotter.plot_simple(image)
+        # plotter.show_plot()
+
+
+        current_index = self.get_first_under(image, percents/100.0) if low else self.get_first_above(image, percents/100.0)
+        if percents not in self.last_index:
+            self.last_index[percents] = {low: current_index}
+            self.last_difference[percents] = {low: 0}
+            return 0, None
+        elif low not in self.last_index[percents]:
+            self.last_index[percents][low] = current_index
+            self.last_difference[percents][low] = 0
+            return 0, None
         else:
-            safe_threshold_px_negative = -5
-            difference_px = current_index - self.last_index[percents]
-            if difference_px > 0:
-                self.last_index[percents] = current_index
-                self.last_difference[percents] = difference_px
+            low_threshold_px = 3
+            high_threshold_px = 20
+
+            difference_px = current_index - self.last_index[percents][low]
+            if difference_px > 0 and difference_px < low_threshold_px:
+                self.last_index[percents][low] = current_index
+                self.last_difference[percents][low] = difference_px
                 return difference_px, current_index
-            elif difference_px < safe_threshold_px_negative:
-                temp_last_index = self.last_index[percents]
-                self.last_index[percents] = current_index
-                return self.last_difference[percents], temp_last_index
+            elif difference_px < -low_threshold_px:
+                temp_last_index = self.last_index[percents][low]
+                self.last_index[percents][low] = current_index
+                return self.last_difference[percents][low], temp_last_index
             else:
                 return 0, None
 
@@ -302,7 +324,9 @@ if __name__ == "__main__":
     actual_estimate_fi_as = None  # as is short for arcsecond, obviously
     last_dfi_as = 0
     index = 0
-    angles_deg = np.arange(begin_angle_as, begin_angle_as + 360, 1)*arcsek_in_deg
+    angles_deg = np.arange(begin_angle_as, begin_angle_as + 720, 0.5)*constant_as_to_deg
+    r_angles = constant_as_to_deg * (0.5 - np.random.rand(len(angles_deg)))
+    angles_deg = np.add(angles_deg, r_angles)
     register_fi = []
 
     readout_generator = ReadoutGenerator(sensor, wheel, sensor_tilt_deg=1.4, sensor_shift_um=(0, -765))
@@ -321,19 +345,38 @@ if __name__ == "__main__":
         # plotter.show_plot()
 
         # pixel_difference_from_last_reading = finer_estimator.get_dx_px(useful_raw)
-        dx_values = []
-        for i in range(1, 10):
-            i_threshold = 10*i
-            dx_value, dx_index = simplest_estimator.get_dx_px(useful_raw, i_threshold)
-            dx_values.append(dx_value)
 
-        logger.info(f"Values = {dx_values}")
-        pixel_difference_from_last_reading = np.mean([d for d in dx_values if d < 32])
+        # dx1, i = simplest_estimator.get_dx_px(useful_raw, 20, True)
+        dx2, i = simplest_estimator.get_dx_px(useful_raw, 25, True)
+        # dx3, i = simplest_estimator.get_dx_px(useful_raw, 40, True)
+        dx4, i = simplest_estimator.get_dx_px(useful_raw, 50, True)
+        # dx5, i = simplest_estimator.get_dx_px(useful_raw, 60, True)
+        dx6, i = simplest_estimator.get_dx_px(useful_raw, 75, True)
+        # dx7, i = simplest_estimator.get_dx_px(useful_raw, 80, True)
+        pixel_difference_from_last_reading = 0.3333 * (dx2 + dx4 + dx6) #dx4 #(dx1 + dx2 + dx3 + dx4 + dx5 + dx6 + dx7) / 7.0
+        # dx_values = []
+        # for i in range(1, 10):
+        #     i_threshold = 10*i
+        #     dx_value, dx_index = simplest_estimator.get_dx_px(useful_raw, i_threshold, True)
+        #     dx_values.append((dx_value, dx_index))
+        #     dx_value, dx_index = simplest_estimator.get_dx_px(useful_raw, i_threshold, False)
+        #     dx_values.append((dx_value, dx_index))
+        #
+        # dx_values = [(d, i) for (d, i) in dx_values if i is not None]
+        # dx_values = sorted(dx_values, reverse=False, key=lambda d: d[-1])
+        #
+        # logger.info(f"Values = {dx_values}")
+        #
+        # dx_values = [d for (d, i) in dx_values[:10]]
+        # # dx_values =
+        #
+        # logger.info(f"Values = {dx_values}")
+        # pixel_difference_from_last_reading = np.mean([d for d in dx_values if d < 32]) if dx_values else 0
         # pixel_difference_from_last_reading, dx_index = simplest_estimator.get_dx_px(useful_raw, 50)
-        width_of_stripe_px = 45  # TODO
+        width_of_stripe_px = 45.0  # TODO
 
         #############
-        dy_inaccurate_but_sane = 45
+        dy_inaccurate_but_sane = 45.0
         dy = get_width_of_stripe_in_pixels(useful_raw, dy_inaccurate_but_sane)
         threshold_of_sanity = 0.8
         if (abs(dy - dy_inaccurate_but_sane) > threshold_of_sanity * dy_inaccurate_but_sane):
@@ -355,7 +398,7 @@ if __name__ == "__main__":
 
         actual_estimate_fi_as = crudest_estimator.update_with_global(actual_estimate_fi_as, useful_raw)
 
-        relative_angle_as = angle_deg/arcsek_in_deg - begin_angle_as
+        relative_angle_as = angle_deg*constant_deg_to_as - begin_angle_as
         logger.info(f"Index = {index}. "
                     f"Angle = {relative_angle_as}\". "
                     f"Actual estimate = {actual_estimate_fi_as}\"")
