@@ -28,11 +28,11 @@ stripes = []
 angle_increment = 2 * np.pi / M
 pol_w = rw / 2
 
-#
-# plt.figure()
-# ax = plt.gca()
-# ax.set_xlim([-R - 1.5 * rh, R + 1.5 * rh])
-# ax.set_ylim([-R - 1.5 * rh, R + 1.5 * rh])
+
+plt.figure()
+ax = plt.gca()
+ax.set_xlim([-R - 1.5 * rh, R + 1.5 * rh])
+ax.set_ylim([-R - 1.5 * rh, R + 1.5 * rh])
 
 start_fi = 0
 for i in range(0, M):
@@ -45,20 +45,20 @@ for i in range(0, M):
     rect = patches.Rectangle((xx, yy), rw, rh, edgecolor='None', facecolor='black', alpha=0.5, angle=-180 * fi / np.pi)
     rect2 = patches.Rectangle((xxxx, yyyy), rw, rh, edgecolor='None', facecolor='red', alpha=0.5,
                               angle=-180 * (fi + angle_increment / 2) / np.pi)
-    # trans = mpl.transforms.Affine2D().rotate_around(xx, yy, -fi) + ax.transData
-    # rect.set_transform(trans)
+    trans = mpl.transforms.Affine2D().rotate_around(xx, yy, -fi) + ax.transData
+    rect.set_transform(trans)
     p = Polygon([(xx, yy), (xx + rw, yy), (xx + rw, yy + rh), (xx, yy + rh)])
     stripes.append(affinity.rotate(p, -fi, origin=(xx, yy), use_radians=True))
-    # ax.add_patch(rect)
-    # ax.add_patch(rect2)
+    ax.add_patch(rect)
+    ax.add_patch(rect2)
 
 print(f"N of stripes={len(stripes)}")
 
 sx = 0 - sensor_w / 2
 sy = R
 
-# sensor_angle = 4 * 180 * angle_increment / np.pi
-# sensor = patches.Rectangle((sx, sy), sensor_w, sensor_h, color='green', alpha=0.3, angle=sensor_angle)
+sensor_angle = 4 * 180 * angle_increment / np.pi
+sensor = patches.Rectangle((sx, sy), sensor_w, sensor_h, color='green', alpha=0.3, angle=sensor_angle)
 
 
 y_inc = sensor_h / N
@@ -74,7 +74,7 @@ for i in range(0, N):
     # pr[2:] = [sx + sensor_w, sy + y_inc]
     # pr[3:] = [sx, sy +
     xy = p.exterior.coords.xy
-    # ax.add_patch(patches.Polygon(np.transpose(xy)))
+    ax.add_patch(patches.Polygon(np.transpose(xy)))
     print(p)
     s.append(p)
 
@@ -83,7 +83,7 @@ area = []
 K = 10
 relevant_indices = [i for i in range(M-K, M)] + [j for j in range(0, K)]
 
-for ssensor_index in range(0, N):
+for sensor_index in range(0, N):
     area_s = 0
     for stripe_index in relevant_indices:
         area_s += stripes[stripe_index].intersection(s[sensor_index]).area
@@ -92,10 +92,10 @@ for ssensor_index in range(0, N):
     area.append(sensor_w * y_inc - area_s)
 
 
-# rect = patches.Rectangle((20, 40), 40, 30, linewidth=1, edgecolor='black', facecolor='black')
-#
-# # Add the patch to the Axes
-# ax.add_patch(rect)
+rect = patches.Rectangle((20, 40), 40, 30, linewidth=1, edgecolor='black', facecolor='black')
+
+# Add the patch to the Axes
+ax.add_patch(rect)
 
 
 

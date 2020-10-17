@@ -324,7 +324,7 @@ if __name__ == "__main__":
     actual_estimate_fi_as = None  # as is short for arcsecond, obviously
     last_dfi_as = 0
     index = 0
-    angles_deg = np.arange(begin_angle_as, begin_angle_as + 720, 0.5)*constant_as_to_deg
+    angles_deg = np.arange(begin_angle_as, begin_angle_as + 720, 5)*constant_as_to_deg
     r_angles = constant_as_to_deg * (0.5 - np.random.rand(len(angles_deg)))
     angles_deg = np.add(angles_deg, r_angles)
     register_fi = []
@@ -345,34 +345,14 @@ if __name__ == "__main__":
         # plotter.show_plot()
 
         # pixel_difference_from_last_reading = finer_estimator.get_dx_px(useful_raw)
+        pixel_difference_from_last_reading = 0
 
-        # dx1, i = simplest_estimator.get_dx_px(useful_raw, 20, True)
-        dx2, i = simplest_estimator.get_dx_px(useful_raw, 25, True)
-        # dx3, i = simplest_estimator.get_dx_px(useful_raw, 40, True)
-        dx4, i = simplest_estimator.get_dx_px(useful_raw, 50, True)
-        # dx5, i = simplest_estimator.get_dx_px(useful_raw, 60, True)
-        dx6, i = simplest_estimator.get_dx_px(useful_raw, 75, True)
-        # dx7, i = simplest_estimator.get_dx_px(useful_raw, 80, True)
-        pixel_difference_from_last_reading = 0.3333 * (dx2 + dx4 + dx6) #dx4 #(dx1 + dx2 + dx3 + dx4 + dx5 + dx6 + dx7) / 7.0
-        # dx_values = []
-        # for i in range(1, 10):
-        #     i_threshold = 10*i
-        #     dx_value, dx_index = simplest_estimator.get_dx_px(useful_raw, i_threshold, True)
-        #     dx_values.append((dx_value, dx_index))
-        #     dx_value, dx_index = simplest_estimator.get_dx_px(useful_raw, i_threshold, False)
-        #     dx_values.append((dx_value, dx_index))
-        #
-        # dx_values = [(d, i) for (d, i) in dx_values if i is not None]
-        # dx_values = sorted(dx_values, reverse=False, key=lambda d: d[-1])
-        #
-        # logger.info(f"Values = {dx_values}")
-        #
-        # dx_values = [d for (d, i) in dx_values[:10]]
-        # # dx_values =
-        #
-        # logger.info(f"Values = {dx_values}")
-        # pixel_difference_from_last_reading = np.mean([d for d in dx_values if d < 32]) if dx_values else 0
-        # pixel_difference_from_last_reading, dx_index = simplest_estimator.get_dx_px(useful_raw, 50)
+
+        dx4, i4 = simplest_estimator.get_dx_px(useful_raw, 60, True)
+
+
+        pixel_difference_from_last_reading = dx4
+
         width_of_stripe_px = 45.0  # TODO
 
         #############
@@ -396,7 +376,7 @@ if __name__ == "__main__":
             actual_estimate_fi_as += (dfi_as if abs(dfi_as) < sensitivity_threshold_as else last_dfi_as)
             last_dfi_as = dfi_as
 
-        actual_estimate_fi_as = crudest_estimator.update_with_global(actual_estimate_fi_as, useful_raw)
+        # actual_estimate_fi_as = crudest_estimator.update_with_global(actual_estimate_fi_as, useful_raw)
 
         relative_angle_as = angle_deg*constant_deg_to_as - begin_angle_as
         logger.info(f"Index = {index}. "
