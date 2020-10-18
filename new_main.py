@@ -177,7 +177,7 @@ class CollisionChecker:
 
 collision_checker = CollisionChecker()
 
-estimator = EstimatorPreviousN(1)
+estimator = EstimatorPreviousN(10)
 
 def update():
     global global_fig
@@ -196,11 +196,14 @@ def update():
     readout = collision_checker.check_collisions()
 
     # estimate position:
-    estimate_arcsec = estimator.estimate(readout)
+    estimate_arcsec = 4.18*estimator.estimate(readout)
     error_arcsec = estimate_arcsec - random_angle_arcsec
     global_errors.append(error_arcsec)
 
-    print(f"Total phi: {global_phi}\", last delta = {random_angle_arcsec}\", est. delta ={estimate_arcsec}")
+    print(f"phi: {global_phi}\", "
+          f"delta = {random_angle_arcsec}\","
+          f"estim ={estimate_arcsec},"
+          f"error = {error_arcsec}")
 
     # update plots:
     global_line.set_ydata(readout)
@@ -240,10 +243,17 @@ for r in test_strip.get_rects():
 collision_checker.set_sensor(my_sensor)
 collision_checker.set_strips(test_strip)
 
+for i in range(0, 500):
+    update()
+
 plt.show()
 
 fig, ax = plt.subplots()
-ax.plot(global_errors)
+ax.plot(global_errors[1:])
+sums = [np.sum(global_errors[1:i]) for i in range(1, len(global_errors))]
+print(sums)
+ax.plot(sums)
+ax.set_ylim(-1000, 1000)
 plt.show()
 
 
