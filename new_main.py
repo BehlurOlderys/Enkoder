@@ -4,6 +4,7 @@ import matplotlib as mpl
 import matplotlib.pyplot as plt
 from shapely import affinity
 from shapely.geometry import Polygon
+from estimators import EstimatorPreviousN, smooth
 
 sensor_N = 128
 grubosc_paska_mm = 0.128
@@ -20,6 +21,7 @@ global_read_ax = None
 global_fig = None
 global_readout = np.zeros(sensor_N)
 global_line = None
+global_line_smooth = None
 global_phi = 0
 global_errors = []
 
@@ -175,10 +177,12 @@ class CollisionChecker:
 
 collision_checker = CollisionChecker()
 
+estimator = EstimatorPreviousN(1)
 
 def update():
     global global_fig
     global global_line
+    global global_line_smooth
     global global_phi
     global global_errors
 
@@ -192,7 +196,7 @@ def update():
     readout = collision_checker.check_collisions()
 
     # estimate position:
-    estimate_arcsec = 0.1
+    estimate_arcsec = estimator.estimate(readout)
     error_arcsec = estimate_arcsec - random_angle_arcsec
     global_errors.append(error_arcsec)
 
@@ -200,6 +204,7 @@ def update():
 
     # update plots:
     global_line.set_ydata(readout)
+    global_line_smooth.set_ydata(smooth(readout, 5))
     global_fig.canvas.draw()
     global_fig.canvas.flush_events()
 
@@ -215,6 +220,7 @@ global_fig, (global_geom_ax, global_read_ax) = plt.subplots(1, 2)
 global_fig.canvas.mpl_connect('key_press_event', press)
 
 global_line, = global_read_ax.plot(range(0, len(global_readout)), global_readout, color='black')
+global_line_smooth, = global_read_ax.plot(range(0, len(global_readout)), global_readout, color='green')
 
 global_geom_ax.set_xlim(R_um - 1000, 85000)
 global_geom_ax.set_ylim(-1000, 1500)
@@ -222,7 +228,7 @@ global_geom_ax.set_ylim(-1000, 1500)
 global_read_ax.set_ylim(0, 3600)
 
 
-my_sensor = Sensor(angle_deg=1.2, offset_um=(500, -1500))
+my_sensor = Sensor(angle_deg=1.3, offset_um=(500, -2000))
 for r in my_sensor.get_rects():
     global_geom_ax.add_patch(r)
 
